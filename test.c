@@ -22,11 +22,10 @@ int main(int argc, char **argv)
   register void *sp asm ("rsp");
   printf("%p\n", sp);
 
-  // printf("%p\n", pageindex);
-
   // Get liballocs metadata
   printf("%u\n",PAGENUM(sp));
 
+  printf("%p\n", pageindex);
   // int n = sizeof(big_allocations[0]);
   // printf("%i\n", n);
 
