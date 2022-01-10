@@ -16,14 +16,16 @@ int main(int argc, char **argv)
       UNIQTYPE_NAME(alloc_get_type(*x))
     );
   }
-  free(p);
+  // free(p);
 
   // Retrive sp
-  register void *sp asm ("rsp");
-  printf("%p\n", sp);
+  
+  void *sp;
+  __asm__("movq %%rsp, %0\n" : "=r"(sp));
+  // printf("%p\n", sp);
 
   // Get liballocs metadata
-  printf("%u\n",PAGENUM(sp));
+  printf("%hi\n",PAGENUM(sp));
 
   printf("%p\n", pageindex);
   // int n = sizeof(big_allocations[0]);
