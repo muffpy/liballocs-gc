@@ -1,11 +1,20 @@
 #include <allocs.h>
 #include <stdio.h>
-// #include "/usr/local/src/liballocs/contrib/libsystrap/contrib/librunt/include/vas.h"
 #include <inttypes.h>
-// #include "/usr/local/src/liballocs/include/fake-libunwind.h"
+
+// Contains fake_dladdr
 #include "/usr/local/src/liballocs/contrib/libsystrap/contrib/librunt/include/relf.h"
 
-
+/*
+* Params: ip (instruction ptr) : next instruction to be executed
+          sp (stack ptr) : top of the current frame used in the stack of current thread
+          bp (base ptr) : top of previous stack frame ?
+  
+  The function fake_dladdr(addr, ...args) determines whether the address specified in
+  addr is located in one of the shared objects loaded by the
+  calling application.  If it is, then fake_dladdr() returns information
+  about the shared object (fname and fbase) and symbol (sname and saddr) that overlaps addr.
+*/
 static int callback(void *ip, void *sp, void *bp, void *arg)
 {
 	const char *sname = ip ? "(unknown)" : "(no active function)";
@@ -30,7 +39,6 @@ int main(int argc, char **argv)
   // free(p);
 
   // Retrive sp
-  
   void *sp;
   __asm__("movq %%rsp, %0\n" : "=r"(sp));
   printf("%p\n", sp);
