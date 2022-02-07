@@ -1,7 +1,18 @@
 #include <allocs.h>
 #include <stdio.h>
-#include "/usr/local/src/liballocs/contrib/libsystrap/contrib/librunt/include/vas.h"
+// #include "/usr/local/src/liballocs/contrib/libsystrap/contrib/librunt/include/vas.h"
 #include <inttypes.h>
+// #include "/usr/local/src/liballocs/include/fake-libunwind.h"
+#include "/usr/local/src/liballocs/contrib/libsystrap/contrib/librunt/include/relf.h"
+
+
+static int callback(void *ip, void *sp, void *bp, void *arg)
+{
+	const char *sname = ip ? "(unknown)" : "(no active function)";
+	int ret = ip ? fake_dladdr(ip, NULL, NULL, &sname, NULL) : 0;
+	printf("%s\n", sname);
+	return 0; // keep going
+}
 
 int main(int argc, char **argv)
 {
@@ -22,23 +33,19 @@ int main(int argc, char **argv)
   
   void *sp;
   __asm__("movq %%rsp, %0\n" : "=r"(sp));
-  // printf("%p\n", sp);
+  printf("%p\n", sp);
 
   // Get liballocs metadata
   printf("%hi\n",PAGENUM(sp));
-
   printf("%p\n", pageindex);
-  // int n = sizeof(big_allocations[0]);
-  // printf("%i\n", n);
+  printf("%u\n", pageindex[PAGENUM(sp)]);
 
-  // for (int i=0; i<n; i++ ){
-  //   printf("%" PRIu16 "\n", pageindex[i]);
-  // }
-  
-  // printf("%u", pageindex[PAGENUM(sp)]);
-  // struct big_allocation *st;
-  // st = &big_allocations[pageindex[PAGENUM(sp)]];
+  struct big_allocation *st;
+  st = &big_allocations[pageindex[PAGENUM(sp)]];
 
-  // printf("big alloc begins at %p\n", st->begin);
+  printf("big alloc begins at %p\n", st->begin);
+
+  // #define USE_FAKE_LIBUNWIND = true
+  __liballocs_walk_stack(callback, NULL);
   return 0;
 }
