@@ -1,9 +1,8 @@
 #include <allocs.h>
 #include <stdio.h>
 #include <inttypes.h>
-#include <pageindex.h>
 #include "relf.h" // Contains fake_dladdr and _r_debug
-#include <allocmeta.h>
+#include "heap_index.h"
 
 /*
 * Params: ip (instruction ptr) : next instruction to be executed
@@ -25,49 +24,87 @@ static int callback(void *ip, void *sp, void *bp, void *arg)
 
 void debug_segments(void)
 {
-	if (__liballocs_debug_level >= 10)
-		{
-			for (struct link_map *l = _r_debug.r_map; l; l = l->l_next)
-			{
-				/* l_addr isn't guaranteed to be mapped, so use _DYNAMIC a.k.a. l_ld'*/
-				void *query_addr = l->l_ld;
-				struct big_allocation *containing_mapping =__lookup_bigalloc_top_level(query_addr);
-				struct big_allocation *containing_file = __lookup_bigalloc_under(
-					query_addr, &__static_file_allocator, containing_mapping, NULL);
-				assert(containing_file);
-				struct allocs_file_metadata *afile =
-						 containing_file->meta.un.opaque_data.data_ptr;	
-				for (unsigned i_seg = 0; i_seg < afile->m.nload; ++i_seg)
-				{
-					union sym_or_reloc_rec *metavector = afile->m.segments[i_seg].metavector;
-					size_t metavector_size = afile->m.segments[i_seg].metavector_size;
+
+    for (struct link_map *l = _r_debug.r_map; l; l = l->l_next)
+    {
+      /* l_addr isn't guaranteed to be mapped, so use _DYNAMIC a.k.a. l_ld'*/
+      void *query_addr = l->l_ld;
+      struct big_allocation *containing_mapping =__lookup_bigalloc_top_level(query_addr);
+      struct big_allocation *containing_file = __lookup_bigalloc_under(
+        query_addr, &__static_file_allocator, containing_mapping, NULL);
+      assert(containing_file);
+      struct allocs_file_metadata *afile =
+            containing_file->allocator_private;
+      for (unsigned i_seg = 0; i_seg < afile->m.nload; ++i_seg)
+      {
+        union sym_or_reloc_rec *metavector = afile->m.segments[i_seg].metavector;
+        size_t metavector_size = afile->m.segments[i_seg].metavector_size;
 #if 1 /* librunt doesn't do this */
-					// we print the whole metavector
-					for (unsigned i = 0; i < metavector_size / sizeof *metavector; ++i)
-					{
-						fprintf(get_stream_err(), "At %016lx there is a static alloc of kind %u, idx %08u, type %s\n",
-							afile->m.l->l_addr + vaddr_from_rec(&metavector[i], afile),
-							(unsigned) (metavector[i].is_reloc ? REC_RELOC : metavector[i].sym.kind),
-							(unsigned) (metavector[i].is_reloc ? 0 : metavector[i].sym.idx),
-							UNIQTYPE_NAME(
-								metavector[i].is_reloc ? NULL :
-								(struct uniqtype *)(((uintptr_t) metavector[i].sym.uniqtype_ptr_bits_no_lowbits)<<3)
-							)
-						);
-					}
+        // we print the whole metavector
+        if (__liballocs_debug_level >= 10){ 
+          for (unsigned i = 0; i < metavector_size / sizeof *metavector; ++i)
+          {
+            fprintf("At %016lx there is a static alloc of kind %u, idx %08u, type %s\n",
+              afile->m.l->l_addr + vaddr_from_rec(&metavector[i], afile),
+              (unsigned) (metavector[i].is_reloc ? REC_RELOC : metavector[i].sym.kind),
+              (unsigned) (metavector[i].is_reloc ? 0 : metavector[i].sym.idx),
+              UNIQTYPE_NAME(
+                metavector[i].is_reloc ? NULL :
+                (struct uniqtype *)(((uintptr_t) metavector[i].sym.uniqtype_ptr_bits_no_lowbits)<<3)
+              )
+            );
+          }
+        }
 #endif
-				}
-			}
-		}
+      }
+    }
 }
 
-// void *GLOBAL_VAR_malloc;
+static void walk_bitmap(struct arena_bitmap_info* info) {
+  // pretend we're currently on 'one before the initial search start pos'
+  unsigned long cur_bit_idx = 0;
+  
+  /* Iterate forward over bits */
+  unsigned long total_unindexed = 0;
+  while ((unsigned long)-1 != (cur_bit_idx = bitmap_find_first_set1_geq_l(
+                  info->bitmap, info->bitmap + info->nwords,
+                  cur_bit_idx + 1, NULL)))
+  {
+          void *cur_userchunk = (void*)((uintptr_t) info->bitmap_base_addr
+                  + (cur_bit_idx * ALLOCA_ALIGN));
+          printf("Walking an alloca chunk at %p (bitmap base: %p) idx %d\n", cur_userchunk,
+                  (void*) info->bitmap_base_addr, (int) cur_bit_idx);
+          struct insert *cur_insert = insert_for_chunk(cur_userchunk);
+          printf("flag: %u, site: %lu \n", cur_insert->alloc_site_flag, cur_insert->alloc_site);
+          // unsigned long bytes_to_unindex = malloc_usable_size(cur_userchunk);
+          // assert(ALLOCA_ALIGN == MALLOC_ALIGN);
+          // equal alignments so we can just abuse the generic malloc functions
+          // __liballocs_bitmap_delete(b, cur_userchunk);
+          // assert(bytes_to_unindex < BIGGEST_SANE_ALLOCA);
+          // total_unindexed += bytes_to_unindex;
+          // if (total_unindexed >= total_to_unindex)
+          // {
+          //         if (total_unindexed > total_to_unindex)
+          //         {
+          //                 fprintf(stderr, 
+          //                         "Warning: unindexed too many bytes "
+          //                         "(requested %lu from %p; got %lu)\n",
+          //                         total_to_unindex, frame_addr, total_unindexed);
+          //         }
+          //         goto out;
+          // }
+  }
+}
+
+void *GLOBAL_VAR_malloc;
+int glob;
 
 int main(int argc, char **argv)
-{
-  // GLOBAL_VAR_malloc = malloc(sizeof(int));
+{ 
+  glob = 4 * 20;
+  GLOBAL_VAR_malloc = malloc(sizeof(int));
   void *p = malloc(42 * sizeof(int));
-  void *ptrs[] = { main, p, &p, argv, NULL };
+  void *ptrs[] = { main, p, &p, NULL };
   for (void **x = &ptrs[0]; *x; ++x)
   {
     printf("At %p is a %s-allocated object of size %u, type %s\n",
@@ -97,8 +134,18 @@ int main(int argc, char **argv)
   __liballocs_walk_stack(callback, NULL);
 
   // Print out read/write segment metadata
-//   debug_static_file_allocator();
-   debug_segments();
+ //   debug_static_file_allocator();
+  debug_segments();
 
+  struct big_allocation *arena = __lookup_bigalloc_from_root_by_suballocator(GLOBAL_VAR_malloc,
+		&__generic_malloc_allocator, NULL);
+
+  printf("big alloc begins at %p\n", arena->begin);
+  struct arena_bitmap_info *info = arena->suballocator_private;
+  bitmap_word_t *bitmap = info->bitmap;
+
+  printf("Bitmap: %"PRIxPTR"\n", bitmap);
+  printf("nwords: %lu \n", info->nwords);
+  walk_bitmap(info);
   return 0;
 }
