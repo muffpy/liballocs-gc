@@ -60,18 +60,17 @@ void debug_segments(void)
     }
 }
 
-static void walk_bitmap(struct arena_bitmap_info* info) {
+static void *find_chunk(struct arena_bitmap_info* info, void *mem) {
   // pretend we're currently on 'one before the initial search start pos'
-  unsigned long cur_bit_idx = 0;
+  unsigned long cur_bit_idx = -1;
   
   /* Iterate forward over bits */
-  unsigned long total_unindexed = 0;
   while ((unsigned long)-1 != (cur_bit_idx = bitmap_find_first_set1_geq_l(
                   info->bitmap, info->bitmap + info->nwords,
                   cur_bit_idx + 1, NULL)))
   {
           void *cur_userchunk = (void*)((uintptr_t) info->bitmap_base_addr
-                  + (cur_bit_idx * ALLOCA_ALIGN));
+                  + (cur_bit_idx * MALLOC_ALIGN));
           printf("Walking an alloca chunk at %p (bitmap base: %p) idx %d\n", cur_userchunk,
                   (void*) info->bitmap_base_addr, (int) cur_bit_idx);
           struct insert *cur_insert = insert_for_chunk(cur_userchunk);
@@ -102,7 +101,7 @@ int glob;
 int main(int argc, char **argv)
 { 
   glob = 4 * 20;
-  GLOBAL_VAR_malloc = malloc(sizeof(int));
+  GLOBAL_VAR_malloc = malloc(sizeof(int) * 3);
   void *p = malloc(42 * sizeof(int));
   void *ptrs[] = { main, p, &p, NULL };
   for (void **x = &ptrs[0]; *x; ++x)
@@ -130,22 +129,45 @@ int main(int argc, char **argv)
   st = &big_allocations[pageindex[PAGENUM(sp)]];
 
   printf("big alloc begins at %p\n", st->begin);
-
+  
   __liballocs_walk_stack(callback, NULL);
 
   // Print out read/write segment metadata
  //   debug_static_file_allocator();
   debug_segments();
 
-  struct big_allocation *arena = __lookup_bigalloc_from_root_by_suballocator(GLOBAL_VAR_malloc,
+  for (int i = 0; i < NBIGALLOCS; ++i) {
+    if (big_allocations[i].suballocator == &__generic_malloc_allocator
+			|| big_allocations[i].suballocator == &__alloca_allocator)
+    {
+      printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
+      struct big_allocation *arena = &big_allocations[i];
+      struct arena_bitmap_info *info = arena->suballocator_private;
+      bitmap_word_t *bitmap = info->bitmap;
+
+      printf("Bitmap: %"PRIxPTR"\n", bitmap);
+      printf("nwords: %lu \n", info->nwords);
+      void *chunk = find_chunk(info, arena->begin);
+    }
+  }
+
+
+  // proof check
+  struct big_allocation *arena1 = __lookup_bigalloc_from_root_by_suballocator(GLOBAL_VAR_malloc,
+		&__generic_malloc_allocator, NULL);
+  struct big_allocation *arena2 = __lookup_bigalloc_from_root_by_suballocator(p,
 		&__generic_malloc_allocator, NULL);
 
-  printf("big alloc begins at %p\n", arena->begin);
-  struct arena_bitmap_info *info = arena->suballocator_private;
-  bitmap_word_t *bitmap = info->bitmap;
+  printf("\n\narena1 alloc begins at %p\n", arena1->begin);
+  printf("arena1 alloc   ends at %p\n", arena1->end);
+  printf("arena2 alloc begins at %p\n", arena2->begin);
+  printf("arena2 alloc   ends at %p\n", arena2->end);
+  // struct arena_bitmap_info *info = arena->suballocator_private;
+  // bitmap_word_t *bitmap = info->bitmap;
 
-  printf("Bitmap: %"PRIxPTR"\n", bitmap);
-  printf("nwords: %lu \n", info->nwords);
-  walk_bitmap(info);
+  // printf("Bitmap: %"PRIxPTR"\n", bitmap);
+  // printf("nwords: %lu \n", info->nwords);
+  // find_chunk(info, arena->begin);
+
   return 0;
 }
