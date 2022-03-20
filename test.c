@@ -10,21 +10,28 @@
           bp (base ptr) : top of previous stack frame ?
   
   The function fake_dladdr(addr, ...args) determines whether the address specified in
-  addr is located in one of the shared objects loaded by the
-  calling application.  If it is, then fake_dladdr() returns information
-  about the shared object (fname and fbase) and symbol (sname and saddr) that overlaps addr.
+  addr is located in one of the shared objects loaded by the calling application.  
+  If it is, then fake_dladdr() returns information about the shared object (fname and fbase) 
+  and symbol (sname and saddr) that overlaps addr.
 */
-static int callback(void *ip, void *sp, void *bp, void *arg)
+static int st_callback(void *ip, void *sp, void *bp, void *arg)
 {
-	const char *sname = ip ? "(unknown)" : "(no active function)";
-	int ret = ip ? fake_dladdr(ip, NULL, NULL, &sname, NULL) : 0;
-	printf("%s\n", sname);
+	// const char *sname = ip ? "(unknown)" : "(no active function)";
+	// int ret = ip ? fake_dladdr(ip, NULL, NULL, &sname, NULL) : 0;
+	// printf("%s\n", sname);
+
+  // Get type information for each frame
+  struct frame_uniqtype_and_offset s = pc_to_frame_uniqtype(ip);
+  struct uniqtype *frame_desc = s.u;
+  if (frame_desc){
+    printf("frame kind: %d \n", UNIQTYPE_KIND(frame_desc));
+  }
+  printf ("ip = %p, bp = %p, sp = %p\n", ip, bp, sp);
 	return 0; // keep going
 }
 
-void debug_segments(void)
+void view_segments(void)
 {
-
     for (struct link_map *l = _r_debug.r_map; l; l = l->l_next)
     {
       /* l_addr isn't guaranteed to be mapped, so use _DYNAMIC a.k.a. l_ld'*/
@@ -60,7 +67,7 @@ void debug_segments(void)
     }
 }
 
-static void *find_chunk(struct arena_bitmap_info* info, void *mem) {
+static void *find_allocated_chunks(struct arena_bitmap_info* info, void *mem) {
   // pretend we're currently on 'one before the initial search start pos'
   unsigned long cur_bit_idx = -1;
   
@@ -74,35 +81,76 @@ static void *find_chunk(struct arena_bitmap_info* info, void *mem) {
           printf("Walking an alloca chunk at %p (bitmap base: %p) idx %d\n", cur_userchunk,
                   (void*) info->bitmap_base_addr, (int) cur_bit_idx);
           struct insert *cur_insert = insert_for_chunk(cur_userchunk);
-          printf("flag: %u, site: %lu \n", cur_insert->alloc_site_flag, cur_insert->alloc_site);
-          // unsigned long bytes_to_unindex = malloc_usable_size(cur_userchunk);
-          // assert(ALLOCA_ALIGN == MALLOC_ALIGN);
-          // equal alignments so we can just abuse the generic malloc functions
-          // __liballocs_bitmap_delete(b, cur_userchunk);
-          // assert(bytes_to_unindex < BIGGEST_SANE_ALLOCA);
-          // total_unindexed += bytes_to_unindex;
-          // if (total_unindexed >= total_to_unindex)
-          // {
-          //         if (total_unindexed > total_to_unindex)
-          //         {
-          //                 fprintf(stderr, 
-          //                         "Warning: unindexed too many bytes "
-          //                         "(requested %lu from %p; got %lu)\n",
-          //                         total_to_unindex, frame_addr, total_unindexed);
-          //         }
-          //         goto out;
+          printf("flag: %u, site: %lu \n", cur_insert->alloc_site_flag,cur_insert->alloc_site);
+          struct uniqtype *out_type;
+          const void *site;
+          liballocs_err_t err = extract_and_output_alloc_site_and_type(cur_insert, &out_type, &site);
+          printf("\n");
+          // if (!out_type) {
+          //   out_type = __uniqtype__ARR___uninterpreted_byte;
           // }
+          printf("site ptr %p \n", site);
+          printf("kind: %d \n", UNIQTYPE_KIND(out_type));
+          printf("size in bytes? : %u \n", UNIQTYPE_SIZE_IN_BYTES(out_type));
+          printf("is ptr? %d \n", UNIQTYPE_IS_POINTER_TYPE(out_type));
+          printf("array length: %u \n", UNIQTYPE_ARRAY_LENGTH(out_type));
+          // printf("array elemnt type: %s \n", UNIQTYPE_NAME(UNIQTYPE_ARRAY_ELEMENT_TYPE(out_type)));
+          printf("name: %s \n", UNIQTYPE_NAME(out_type));
+          printf("pointee type: %d \n", UNIQTYPE_POINTEE_TYPE(out_type));
+          printf("is subprogram type? %d \n", UNIQTYPE_IS_SUBPROGRAM_TYPE(out_type));
+          printf("\n");
+          // print(out_type->)
   }
 }
 
 void *GLOBAL_VAR_malloc;
 int glob;
 
+void lose_malloc(){
+  void *l = malloc(sizeof(double));
+}
+
+struct maze {
+  int num;
+  char *name;
+};
+struct maze *nested_mallocs() {
+  struct maze *l1;
+  l1 = malloc(sizeof(struct maze));
+  l1->num = 1;
+  l1->name = malloc(20);
+
+  return l1;
+}
+
+void mark() {
+  for (int i = 0; i < NBIGALLOCS; ++i) {
+    if (big_allocations[i].suballocator == &__generic_malloc_allocator
+			|| big_allocations[i].suballocator == &__alloca_allocator)
+    {
+      printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
+      struct big_allocation *arena = &big_allocations[i];
+      struct arena_bitmap_info *info = arena->suballocator_private;
+      bitmap_word_t *bitmap = info->bitmap;
+
+      printf("Bitmap: %"PRIxPTR"\n", bitmap);
+      // for (int i= 0; i < info->nwords; ++i) {
+      //   printf("Word at position %i is %lx \n", i, info->bitmap[i]);
+      // }
+      printf("nwords: %lu \n", info->nwords);
+      void *chunk = find_allocated_chunks(info, arena->begin);
+    }
+  }
+}
+
 int main(int argc, char **argv)
 { 
   glob = 4 * 20;
-  GLOBAL_VAR_malloc = malloc(sizeof(int) * 3);
-  void *p = malloc(42 * sizeof(int));
+  // GLOBAL_VAR_malloc = malloc(sizeof(int));
+  lose_malloc();
+  struct maze *l1 = nested_mallocs();
+  void *p = malloc(5 * sizeof(int));
+  void *chmalloc = malloc(10 * sizeof(char));
   void *ptrs[] = { main, p, &p, NULL };
   for (void **x = &ptrs[0]; *x; ++x)
   {
@@ -128,40 +176,39 @@ int main(int argc, char **argv)
   struct big_allocation *st;
   st = &big_allocations[pageindex[PAGENUM(sp)]];
 
-  printf("big alloc begins at %p\n", st->begin);
+  // printf("big alloc begins at %p\n", st->begin);
   
-  __liballocs_walk_stack(callback, NULL);
+  __liballocs_walk_stack(st_callback, NULL);
+  printf("\n");
 
   // Print out read/write segment metadata
  //   debug_static_file_allocator();
-  debug_segments();
+  view_segments();
 
-  for (int i = 0; i < NBIGALLOCS; ++i) {
-    if (big_allocations[i].suballocator == &__generic_malloc_allocator
-			|| big_allocations[i].suballocator == &__alloca_allocator)
-    {
-      printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
-      struct big_allocation *arena = &big_allocations[i];
-      struct arena_bitmap_info *info = arena->suballocator_private;
-      bitmap_word_t *bitmap = info->bitmap;
+  /* 
+  * Mark phase depth first search - 
+  * iterate over heap arenas that contain chunks which have been allocated to the user by malloc
+  * and mark these chunks as 'reached' using the mark function. Follow the child pointers
+  * inside these chunks and mark them as 'reached' as well. At the end of the mark phase,
+  * every marked object in the heap is black and every unmarked object is white.
+  */ 
+  // mark(); 
 
-      printf("Bitmap: %"PRIxPTR"\n", bitmap);
-      printf("nwords: %lu \n", info->nwords);
-      void *chunk = find_chunk(info, arena->begin);
-    }
-  }
+  /*
+  * Collect white objects in the heap
+  */
 
 
   // proof check
-  struct big_allocation *arena1 = __lookup_bigalloc_from_root_by_suballocator(GLOBAL_VAR_malloc,
-		&__generic_malloc_allocator, NULL);
-  struct big_allocation *arena2 = __lookup_bigalloc_from_root_by_suballocator(p,
-		&__generic_malloc_allocator, NULL);
+  // struct big_allocation *arena1 = __lookup_bigalloc_from_root_by_suballocator(GLOBAL_VAR_malloc,
+	// 	&__generic_malloc_allocator, NULL);
+  // struct big_allocation *arena2 = __lookup_bigalloc_from_root_by_suballocator(p,
+	// 	&__generic_malloc_allocator, NULL);
 
-  printf("\n\narena1 alloc begins at %p\n", arena1->begin);
-  printf("arena1 alloc   ends at %p\n", arena1->end);
-  printf("arena2 alloc begins at %p\n", arena2->begin);
-  printf("arena2 alloc   ends at %p\n", arena2->end);
+  // printf("\n\narena1 alloc begins at %p\n", arena1->begin);
+  // printf("arena1 alloc   ends at %p\n", arena1->end);
+  // printf("arena2 alloc begins at %p\n", arena2->begin);
+  // printf("arena2 alloc   ends at %p\n", arena2->end);
   // struct arena_bitmap_info *info = arena->suballocator_private;
   // bitmap_word_t *bitmap = info->bitmap;
 
