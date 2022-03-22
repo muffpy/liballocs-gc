@@ -23,14 +23,14 @@ static int st_callback(void *ip, void *sp, void *bp, void *arg)
   // Get type information for each frame
   struct frame_uniqtype_and_offset s = pc_to_frame_uniqtype(ip);
   struct uniqtype *frame_desc = s.u;
+  printf ("ip = %p, bp = %p, sp = %p\n", ip, bp, sp);
   if (frame_desc){
     printf("frame kind: %d \n", UNIQTYPE_KIND(frame_desc));
   }
-  printf ("ip = %p, bp = %p, sp = %p\n", ip, bp, sp);
 	return 0; // keep going
 }
-
-void view_segments(void)
+ 
+void view_segments()
 {
     for (struct link_map *l = _r_debug.r_map; l; l = l->l_next)
     {
@@ -49,9 +49,10 @@ void view_segments(void)
 #if 1 /* librunt doesn't do this */
         // we print the whole metavector
         if (__liballocs_debug_level >= 10){ 
+
           for (unsigned i = 0; i < metavector_size / sizeof *metavector; ++i)
           {
-            fprintf("At %016lx there is a static alloc of kind %u, idx %08u, type %s\n",
+            printf("At %016lx there is a static alloc of kind %u, idx %08u, type %s\n",
               afile->m.l->l_addr + vaddr_from_rec(&metavector[i], afile),
               (unsigned) (metavector[i].is_reloc ? REC_RELOC : metavector[i].sym.kind),
               (unsigned) (metavector[i].is_reloc ? 0 : metavector[i].sym.idx),
@@ -103,32 +104,13 @@ static void *find_allocated_chunks(struct arena_bitmap_info* info, void *mem) {
   }
 }
 
-void *GLOBAL_VAR_malloc;
-int glob;
-
-void lose_malloc(){
-  void *l = malloc(sizeof(double));
-}
-
-struct maze {
-  int num;
-  char *name;
-};
-struct maze *nested_mallocs() {
-  struct maze *l1;
-  l1 = malloc(sizeof(struct maze));
-  l1->num = 1;
-  l1->name = malloc(20);
-
-  return l1;
-}
-
 void mark() {
   for (int i = 0; i < NBIGALLOCS; ++i) {
+    // printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
     if (big_allocations[i].suballocator == &__generic_malloc_allocator
 			|| big_allocations[i].suballocator == &__alloca_allocator)
     {
-      printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
+      // printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
       struct big_allocation *arena = &big_allocations[i];
       struct arena_bitmap_info *info = arena->suballocator_private;
       bitmap_word_t *bitmap = info->bitmap;
@@ -142,6 +124,34 @@ void mark() {
     }
   }
 }
+
+void get_stack_roots() {
+  // Create and lose malloc
+  void *l = malloc(5 * sizeof(int));
+  printf("\n");
+  printf("Walking the stack ... \n");
+  __liballocs_walk_stack(st_callback, NULL);
+  printf("\n");
+}
+
+
+void lose_malloc(){
+  void *l = malloc(sizeof(double));
+}
+struct maze {
+  int num;
+  char *name;
+};
+struct maze *nested_mallocs() {
+  struct maze *l1;
+  l1 = malloc(sizeof(struct maze));
+  l1->num = 1;
+  l1->name = malloc(20);
+
+  return l1;
+}
+void *GLOBAL_VAR_malloc;
+int glob;
 
 int main(int argc, char **argv)
 { 
@@ -178,8 +188,7 @@ int main(int argc, char **argv)
 
   // printf("big alloc begins at %p\n", st->begin);
   
-  __liballocs_walk_stack(st_callback, NULL);
-  printf("\n");
+  get_stack_roots(); 
 
   // Print out read/write segment metadata
  //   debug_static_file_allocator();
@@ -192,7 +201,7 @@ int main(int argc, char **argv)
   * inside these chunks and mark them as 'reached' as well. At the end of the mark phase,
   * every marked object in the heap is black and every unmarked object is white.
   */ 
-  // mark(); 
+  // mark();
 
   /*
   * Collect white objects in the heap
