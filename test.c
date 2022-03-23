@@ -4,6 +4,46 @@
 #include "relf.h" // Contains fake_dladdr and _r_debug
 #include "heap_index.h"
 
+
+typedef struct __uniqtype_node_rec_s
+{ 
+	void* obj; 
+	struct uniqtype *t;
+	void *info;
+	void (*free)(void *);
+	struct __uniqtype_node_rec_s *next;
+} __uniqtype_node_rec; 
+
+void __uniqtype_default_follow_ptr(void **p_obj, struct uniqtype **p_t, void *arg)
+{
+  // Check if pointed to object is in heap-allocated storage
+  printf("In followptr with %p", *p_obj);
+  // printf("", alloc_get_allocator(*x)->name,)
+  // struct big_allocation test = __lookup_bigalloc_from_root(*p_obj);
+
+  struct big_allocation *arena1 = __lookup_bigalloc_from_root_by_suballocator(*p_obj,
+		&__generic_malloc_allocator, NULL);
+  struct big_allocation *arena2 = __lookup_bigalloc_from_root_by_suballocator(*p_obj,
+		&__alloca_allocator, NULL); 
+    if (arena1){
+      printf("arena1 alloc begins at %p\n", arena1->begin);
+      printf("arena1 alloc   ends at %p\n", arena1->end);
+    }
+    if (arena2){
+      printf("arena2 alloc begins at %p\n", arena2->begin);
+      printf("arena2 alloc   ends at %p\n", arena2->end);
+    }
+}
+
+void uniqtype_bfs(struct uniqtype* t, void *obj_start, unsigned start_offset){
+  __uniqtype_node_rec *adj_u_head = NULL;
+	__uniqtype_node_rec *adj_u_tail = NULL;
+  build_adjacency_list_recursive(&adj_u_head, &adj_u_tail, 
+			obj_start, t, 
+			start_offset, t,
+			__uniqtype_default_follow_ptr, NULL
+		);
+}
 /*
 * Params: ip (instruction ptr) : next instruction to be executed
           sp (stack ptr) : top of the current frame used in the stack of current thread
@@ -15,7 +55,7 @@
   and symbol (sname and saddr) that overlaps addr.
 */
 static int st_callback(void *ip, void *sp, void *bp, void *arg)
-{
+{ 
 	// const char *sname = ip ? "(unknown)" : "(no active function)";
 	// int ret = ip ? fake_dladdr(ip, NULL, NULL, &sname, NULL) : 0;
 	// printf("%s\n", sname);
@@ -25,6 +65,7 @@ static int st_callback(void *ip, void *sp, void *bp, void *arg)
   struct uniqtype *frame_desc = s.u;
   printf ("ip = %p, bp = %p, sp = %p\n", ip, bp, sp);
   if (frame_desc){
+    uniqtype_bfs(frame_desc, ip, 0);
     printf("frame kind: %d \n", UNIQTYPE_KIND(frame_desc));
   }
 	return 0; // keep going
@@ -48,21 +89,23 @@ void view_segments()
         size_t metavector_size = afile->m.segments[i_seg].metavector_size;
 #if 1 /* librunt doesn't do this */
         // we print the whole metavector
-        if (__liballocs_debug_level >= 10){ 
+        // if (__liballocs_debug_level >= 10){ 
 
           for (unsigned i = 0; i < metavector_size / sizeof *metavector; ++i)
           {
+            struct uniqtype *sym = NULL;
+            if (!metavector[i].is_reloc) {
+              sym = (struct uniqtype *)(((uintptr_t) metavector[i].sym.uniqtype_ptr_bits_no_lowbits)<<3);
+              // uniqtype_bfs(sym, afile->m.l->l_addr + vaddr_from_rec(&metavector[i], afile), 0);
+            }
             printf("At %016lx there is a static alloc of kind %u, idx %08u, type %s\n",
               afile->m.l->l_addr + vaddr_from_rec(&metavector[i], afile),
               (unsigned) (metavector[i].is_reloc ? REC_RELOC : metavector[i].sym.kind),
               (unsigned) (metavector[i].is_reloc ? 0 : metavector[i].sym.idx),
-              UNIQTYPE_NAME(
-                metavector[i].is_reloc ? NULL :
-                (struct uniqtype *)(((uintptr_t) metavector[i].sym.uniqtype_ptr_bits_no_lowbits)<<3)
-              )
+              UNIQTYPE_NAME(sym)
             );
           }
-        }
+        // }
 #endif
       }
     }
@@ -128,10 +171,13 @@ void mark() {
 void get_stack_roots() {
   // Create and lose malloc
   void *l = malloc(5 * sizeof(int));
-  printf("\n");
-  printf("Walking the stack ... \n");
+  void *m = malloc(5 * sizeof(int));
+  void *q = malloc(5 * sizeof(int));
+  void *n = malloc(5 * sizeof(int));
+  // // printf("\n");
+  // printf("Walking the stack ... \n");
   __liballocs_walk_stack(st_callback, NULL);
-  printf("\n");
+  // printf("\n"); 
 }
 
 
@@ -201,7 +247,7 @@ int main(int argc, char **argv)
   * inside these chunks and mark them as 'reached' as well. At the end of the mark phase,
   * every marked object in the heap is black and every unmarked object is white.
   */ 
-  // mark();
+  mark();
 
   /*
   * Collect white objects in the heap
