@@ -1,3 +1,0 @@
-[submodule "libhighmalloc"]
-	path = libhighmalloc
-	url = https://github.com/stephenrkell/libhighmalloc.git
