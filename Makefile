@@ -10,7 +10,9 @@ INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/liballocstool/include/
 INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/libsystrap/contrib/librunt/include/
 INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/libsystrap/include/
 
-# Build dlmalloc without mmap() fallback and functions with dl prefix
+# Build 2 versions of dlmalloc and archive them with gc functions in libgc.a
+# - disable mmap() fallback and functions with dl prefix : dlmalloc.o
+# - disable sbrk() and without dl prefix : nodlmalloc.o
 DLFLAGS += -g -c
 DLFLAGS += -Wall -Wno-unused-label -Wno-comment
 DLFLAGS += -O3
@@ -24,12 +26,10 @@ GC_funcs.o: GC_funcs.c
 	allocscc -LIBALLOCS_ALLOC_FNS="GC_malloc(Z)p GC_calloc(zZ)p GC_realloc(pZ)p" ${LD_FLAGS} ${INCLUDE_DIRS} -c $^
 libgc.a: nodlmalloc.o dlmalloc.o GC_funcs.o
 	$(AR) r "$@" $^
+GC_LD_FLAG += -lgc
 
 # Test program ##
-# test : test.c
-# 	allocscc ${LD_FLAGS}  -I/usr/local/src/liballocs/include/ -I/usr/local/src/liballocs/src/ -I/usr/local/src/liballocs/contrib/liballocstool/include/ -I/usr/local/src/liballocs/contrib/libsystrap/contrib/librunt/include/ -I/usr/local/src/liballocs/contrib/libsystrap/include/ -o test test.c
-
-GC_LD_FLAG += -L. -lgc
+GC_LD_FLAG += -L.
 test : test.c
 	allocscc -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc ${LD_FLAGS} ${GC_LD_FLAG} ${INCLUDE_DIRS} -o test test.c
 
