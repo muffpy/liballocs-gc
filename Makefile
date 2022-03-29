@@ -27,9 +27,14 @@ libgc.a: nodlmalloc.o dlmalloc.o GC_funcs.o
 LD_FLAGS += -L. -lgc
 # LD_FLAGS += -L./boehm/ -lgc # Boehm GC placeholder
 
-# Test program ##
+## Test program ##
+LIBALLOCS_ALLOC_FNS := GC_malloc(Z)p GC_calloc(zZ)p GC_realloc(pZ)p
+export LIBALLOCS_ALLOC_FNS
+# LIBALLOCS_FREE_FNS := GC_free(p)
+# export LIBALLOCS_FREE_FNS
+DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
 test : test.c
-	allocscc -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc -LIBALLOCS_ALLOC_FNS="GC_malloc(Z)p GC_calloc(zZ)p GC_realloc(pZ)p" ${LD_FLAGS} ${INCLUDE_DIRS} -o test test.c
+	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} -o test test.c
 
 run: test
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
