@@ -1708,6 +1708,25 @@ static FORCEINLINE int win32munmap(void* ptr, size_t size) {
  * Define CALL_MORECORE
  */
 #if HAVE_MORECORE
+#include <stdint.h>
+void *brk_snap;
+#define MORECORE_THRESHOLD 0x100000 /* 1 MB of memory can be used before collection */
+static void* _morecore(size_t call_size){
+  if (call_size == 0) return MORECORE_DEFAULT(0); /* Program was requesting current address of brk */
+  printf("Inside _morecore \n");
+  void* new_brk = (void*) (call_size + (uintptr_t) (MORECORE_DEFAULT(0)));
+  void* brk_threshold = (void*) (MORECORE_THRESHOLD + (uintptr_t) (brk_snap));
+  printf("With call size %zu, brk snap %p, brk threshold %p: new_brk will be at %p \n",
+    call_size, brk_snap, brk_threshold, new_brk);
+  if (new_brk > brk_threshold) return MFAIL;
+  else {
+    return MORECORE_DEFAULT(call_size);
+  }
+}
+#define MORECORE(S) _morecore(S)
+#endif
+
+#if HAVE_MORECORE
     #ifdef MORECORE
         #define CALL_MORECORE(S)    MORECORE(S)
     #else  /* MORECORE */
@@ -4076,6 +4095,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   */
 
   if (MORECORE_CONTIGUOUS && !use_noncontiguous(m)) {
+    printf("Trying continguous morecore first \n");
     char* br = CMFAIL;
     size_t ssize = asize; /* sbrk call size */
     msegmentptr ss = (m->top == 0)? 0 : segment_holding(m, (char*)m->top);
@@ -4119,7 +4139,7 @@ static void* sys_alloc(mstate m, size_t nb) {
             if (end != CMFAIL)
               ssize += esize;
             else {            /* Can't use; try to release */
-              (void) CALL_MORECORE(-ssize);
+              CALL_MORECORE(-ssize);
               br = CMFAIL;
             }
           }
@@ -4137,6 +4157,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   }
 
   if (HAVE_MMAP && tbase == CMFAIL) {  /* Try MMAP */
+    // printf("We tried mmap! \n");
     char* mp = (char*)(CALL_MMAP(asize));
     if (mp != CMFAIL) {
       tbase = mp;
@@ -4146,6 +4167,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   }
 
   if (HAVE_MORECORE && tbase == CMFAIL) { /* Try noncontiguous MORECORE */
+    printf("Trying non-continguous morecore first \n");
     if (asize < HALF_MAX_SIZE_T) {
       char* br = CMFAIL;
       char* end = CMFAIL;
@@ -4164,7 +4186,9 @@ static void* sys_alloc(mstate m, size_t nb) {
   }
 
   if (tbase != CMFAIL) {
-
+#if HAVE_MORECORE
+    printf("Sbrk call worked; tbase: %p, tsize: %zu \n", tbase, tsize);
+#endif
     if ((m->footprint += tsize) > m->max_footprint)
       m->max_footprint = m->footprint;
 
@@ -4232,7 +4256,9 @@ static void* sys_alloc(mstate m, size_t nb) {
       return chunk2mem(p);
     }
   }
-
+#if HAVE_MORECORE
+  printf("Sbrk failed \n");
+#endif
   MALLOC_FAILURE_ACTION;
   return 0;
 }
@@ -4536,7 +4562,18 @@ static void* tmalloc_small(mstate m, size_t nb) {
 
 #if !ONLY_MSPACES
 
+
+#if HAVE_MORECORE
+void brk_snapshot(void* brk_snap_after_gc) {
+  printf("brk snap in dlmalloc: %p ", brk_snap);
+  printf("brk snapshot from gc: %p ", brk_snap_after_gc);
+  printf("Difference in bytes: %d \n", (uintptr_t) (brk_snap_after_gc) - (uintptr_t) (brk_snap));
+  if (brk_snap_after_gc) brk_snap = brk_snap_after_gc;
+}
+#endif
+
 void* dlmalloc(size_t bytes) {
+
   /*
      Basic algorithm:
      If a small request (< 256 bytes minus per-chunk overhead):
@@ -4681,109 +4718,106 @@ void dlfree(void* mem) {
      with special cases for top, dv, mmapped chunks, and usage errors.
   */
 
- // Temporary no-op
- printf("No op here");
+  if (mem != 0) {
+    mchunkptr p  = mem2chunk(mem);
+#if FOOTERS
+    mstate fm = get_mstate_for(p);
+    if (!ok_magic(fm)) {
+      USAGE_ERROR_ACTION(fm, p);
+      return;
+    }
+#else /* FOOTERS */
+#define fm gm
+#endif /* FOOTERS */
+    if (!PREACTION(fm)) {
+      check_inuse_chunk(fm, p);
+      if (RTCHECK(ok_address(fm, p) && ok_inuse(p))) {
+        size_t psize = chunksize(p);
+        mchunkptr next = chunk_plus_offset(p, psize);
+        if (!pinuse(p)) {
+          size_t prevsize = p->prev_foot;
+          if (is_mmapped(p)) {
+            psize += prevsize + MMAP_FOOT_PAD;
+            if (CALL_MUNMAP((char*)p - prevsize, psize) == 0)
+              fm->footprint -= psize;
+            goto postaction;
+          }
+          else {
+            mchunkptr prev = chunk_minus_offset(p, prevsize);
+            psize += prevsize;
+            p = prev;
+            if (RTCHECK(ok_address(fm, prev))) { /* consolidate backward */
+              if (p != fm->dv) {
+                unlink_chunk(fm, p, prevsize);
+              }
+              else if ((next->head & INUSE_BITS) == INUSE_BITS) {
+                fm->dvsize = psize;
+                set_free_with_pinuse(p, psize, next);
+                goto postaction;
+              }
+            }
+            else
+              goto erroraction;
+          }
+        }
 
-//   if (mem != 0) {
-//     mchunkptr p  = mem2chunk(mem);
-// #if FOOTERS
-//     mstate fm = get_mstate_for(p);
-//     if (!ok_magic(fm)) {
-//       USAGE_ERROR_ACTION(fm, p);
-//       return;
-//     }
-// #else /* FOOTERS */
-// #define fm gm
-// #endif /* FOOTERS */
-//     if (!PREACTION(fm)) {
-//       check_inuse_chunk(fm, p);
-//       if (RTCHECK(ok_address(fm, p) && ok_inuse(p))) {
-//         size_t psize = chunksize(p);
-//         mchunkptr next = chunk_plus_offset(p, psize);
-//         if (!pinuse(p)) {
-//           size_t prevsize = p->prev_foot;
-//           if (is_mmapped(p)) {
-//             psize += prevsize + MMAP_FOOT_PAD;
-//             if (CALL_MUNMAP((char*)p - prevsize, psize) == 0)
-//               fm->footprint -= psize;
-//             goto postaction;
-//           }
-//           else {
-//             mchunkptr prev = chunk_minus_offset(p, prevsize);
-//             psize += prevsize;
-//             p = prev;
-//             if (RTCHECK(ok_address(fm, prev))) { /* consolidate backward */
-//               if (p != fm->dv) {
-//                 unlink_chunk(fm, p, prevsize);
-//               }
-//               else if ((next->head & INUSE_BITS) == INUSE_BITS) {
-//                 fm->dvsize = psize;
-//                 set_free_with_pinuse(p, psize, next);
-//                 goto postaction;
-//               }
-//             }
-//             else
-//               goto erroraction;
-//           }
-//         }
+        if (RTCHECK(ok_next(p, next) && ok_pinuse(next))) {
+          if (!cinuse(next)) {  /* consolidate forward */
+            if (next == fm->top) {
+              size_t tsize = fm->topsize += psize;
+              fm->top = p;
+              p->head = tsize | PINUSE_BIT;
+              if (p == fm->dv) {
+                fm->dv = 0;
+                fm->dvsize = 0;
+              }
+              if (should_trim(fm, tsize))
+                sys_trim(fm, 0);
+              goto postaction;
+            }
+            else if (next == fm->dv) {
+              size_t dsize = fm->dvsize += psize;
+              fm->dv = p;
+              set_size_and_pinuse_of_free_chunk(p, dsize);
+              goto postaction;
+            }
+            else {
+              size_t nsize = chunksize(next);
+              psize += nsize;
+              unlink_chunk(fm, next, nsize);
+              set_size_and_pinuse_of_free_chunk(p, psize);
+              if (p == fm->dv) {
+                fm->dvsize = psize;
+                goto postaction;
+              }
+            }
+          }
+          else
+            set_free_with_pinuse(p, psize, next);
 
-//         if (RTCHECK(ok_next(p, next) && ok_pinuse(next))) {
-//           if (!cinuse(next)) {  /* consolidate forward */
-//             if (next == fm->top) {
-//               size_t tsize = fm->topsize += psize;
-//               fm->top = p;
-//               p->head = tsize | PINUSE_BIT;
-//               if (p == fm->dv) {
-//                 fm->dv = 0;
-//                 fm->dvsize = 0;
-//               }
-//               if (should_trim(fm, tsize))
-//                 sys_trim(fm, 0);
-//               goto postaction;
-//             }
-//             else if (next == fm->dv) {
-//               size_t dsize = fm->dvsize += psize;
-//               fm->dv = p;
-//               set_size_and_pinuse_of_free_chunk(p, dsize);
-//               goto postaction;
-//             }
-//             else {
-//               size_t nsize = chunksize(next);
-//               psize += nsize;
-//               unlink_chunk(fm, next, nsize);
-//               set_size_and_pinuse_of_free_chunk(p, psize);
-//               if (p == fm->dv) {
-//                 fm->dvsize = psize;
-//                 goto postaction;
-//               }
-//             }
-//           }
-//           else
-//             set_free_with_pinuse(p, psize, next);
-
-//           if (is_small(psize)) {
-//             insert_small_chunk(fm, p, psize);
-//             check_free_chunk(fm, p);
-//           }
-//           else {
-//             tchunkptr tp = (tchunkptr)p;
-//             insert_large_chunk(fm, tp, psize);
-//             check_free_chunk(fm, p);
-//             if (--fm->release_checks == 0)
-//               release_unused_segments(fm);
-//           }
-//           goto postaction;
-//         }
-//       }
-//     erroraction:
-//       USAGE_ERROR_ACTION(fm, p);
-//     postaction:
-//       POSTACTION(fm);
-//     }
-//   }
-// #if !FOOTERS
-// #undef fm
-// #endif /* FOOTERS */
+          if (is_small(psize)) {
+            insert_small_chunk(fm, p, psize);
+            check_free_chunk(fm, p);
+          }
+          else {
+            tchunkptr tp = (tchunkptr)p;
+            insert_large_chunk(fm, tp, psize);
+            check_free_chunk(fm, p);
+            if (--fm->release_checks == 0)
+              release_unused_segments(fm);
+          }
+          goto postaction;
+        }
+      }
+    erroraction:
+      USAGE_ERROR_ACTION(fm, p);
+    postaction:
+      POSTACTION(fm);
+    }
+  }
+#if !FOOTERS
+#undef fm
+#endif /* FOOTERS */
 }
 
 void* dlcalloc(size_t n_elements, size_t elem_size) {
