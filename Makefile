@@ -25,7 +25,7 @@ nopdlmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
 GC_funcs.o: GC_funcs.c
 	gcc ${INCLUDE_DIRS} -c $^
-libgc.a: nopdlmalloc.o pdlmalloc.o GC_funcs.o
+libgc.a: nopdlmalloc.o dlmallocpure.o GC_funcs.o
 	$(AR) r "$@" $^
 LD_FLAGS += -L. -lgc
 # # LD_FLAGS += -L./boehm/ -lgc # Boehm GC placeholder
