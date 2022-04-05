@@ -8,9 +8,10 @@ INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/liballocstool/include/
 INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/libsystrap/contrib/librunt/include/
 INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/libsystrap/include/
 
-# Build 2 versions of dlmalloc and archive them with gc functions in libgc.a
-# - disable mmap() fallback and create functions with dl prefix : dlmalloc.o
-# - disable sbrk() and creat functions without dl prefix : nodlmalloc.o
+# Build 3 versions of dlmalloc and archive them with gc functions in libgc.a
+# pdlmalloc.o - disable mmap() for sys alloc, create functions with dl prefix and contains morecore wrapper for gc
+# nopdlmalloc.o - disable sbrk() and creat functions without dl prefix
+# dlmallocpure.o - disable mmap() fallback and create functions with dl prefix
 DLFLAGS += -g -c
 DLFLAGS += -Wall -Wno-unused-label -Wno-comment
 DLFLAGS += -O3
@@ -24,7 +25,7 @@ nopdlmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
 GC_funcs.o: GC_funcs.c
 	gcc ${INCLUDE_DIRS} -c $^
-libgc.a: nopdlmalloc.o pdlmalloc.o GC_funcs.o
+libgc.a: nopdlmalloc.o dlmallocpure.o GC_funcs.o
 	$(AR) r "$@" $^
 LD_FLAGS += -L. -lgc
 # # LD_FLAGS += -L./boehm/ -lgc # Boehm GC placeholder
