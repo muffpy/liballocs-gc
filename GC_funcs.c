@@ -1,7 +1,7 @@
 #include <allocs.h>
 #include <stdio.h>
-#include "dlmalloc.h"
-// #include "dlmalloc_pure.h"
+// #include "dlmalloc.h"
+#include "dlmalloc_pure.h"
 #include "GC_funcs.h"
 #include <inttypes.h>
 #include "relf.h" /* Contains fake_dladdr and _r_debug */
@@ -418,23 +418,24 @@ void* GC_malloc(size_t bytes) {
   //   mark_And_sweep();
   //   GC_counter = 6;
   // }
+  
   void *rptr, *brk, *rptr2 = NULL;
-  if (!snap_brk){
-    brk = sbrk(0);
-    printf("First snapshot: %p \n",brk);
-    brk_snapshot(brk);
-  }
+  // if (!snap_brk){
+  //   brk = sbrk(0);
+  //   printf("First snapshot: %p \n",brk);
+  //   brk_snapshot(brk);
+  // }
 
   rptr = dlmalloc(bytes);
-  if (!rptr) { /* brk threshold reached */
-    mark_And_sweep(); // GC
-    brk = sbrk(0); brk_snapshot(brk); /* Get new brk address and pass to dlmalloc */
-    rptr2 = dlmalloc(bytes); /* try again */
+  // if (!rptr) { /* brk threshold reached */
+  //   mark_And_sweep(); // GC
+  //   brk = sbrk(0); brk_snapshot(brk); /* Get new brk address and pass to dlmalloc */
+  //   rptr2 = dlmalloc(bytes); /* try again */
 
-    if (!rptr2) { /* Bad - ran out of heap space */
-      printf("Out of space"); exit(0);
-    }
-  }
+  //   if (!rptr2) { /* Bad - ran out of heap space */
+  //     printf("Out of space"); exit(0);
+  //   }
+  // }
   
   return rptr;
 }

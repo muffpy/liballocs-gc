@@ -442,13 +442,13 @@ int glob;
 int main(int argc, char **argv)
 {
   // inspect_allocs()
-  glob = 9 * 20;
-  GLOBAL_VAR_malloc = malloc(sizeof(double));
-  // lose_malloc();
-  struct maze *l3 = nested_mallocs();
+  // glob = 9 * 20;
+  // GLOBAL_VAR_malloc = malloc(sizeof(double));
+  // // lose_malloc();
+  // struct maze *l3 = nested_mallocs();
   // another_one = l1;
   void *p = malloc(5 * sizeof(int));
-  void *chmalloc = malloc(10 * sizeof(char));
+  // void *chmalloc = malloc(10 * sizeof(char));
   void *ptrs[] = { main, p, &p, NULL };
   for (void **x = &ptrs[0]; *x; ++x)
   {
@@ -460,6 +460,7 @@ int main(int argc, char **argv)
     );
   }
   
+
   free(p);
 
   // // /* 
