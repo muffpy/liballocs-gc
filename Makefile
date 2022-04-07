@@ -53,26 +53,28 @@ run: test
 
 ### Testing ####
 test_dir := $(mkfile_dir)/tests
-# $(info $(test_dir))
 test_srcs := $(wildcard $(test_dir)/*.c)
 $(info $(test_srcs))
 tests := $(patsubst $(test_dir)/%.c,%,$(test_srcs))
-test_file_names := $(patsubst $(test_dir)/%.c,$(test_dir)/%/,$(test_srcs))
-test_file_execs := $(join $(test_file_names),$(tests)) 
+test_file_names := $(patsubst $(test_dir)/%.c,$(test_dir)/%,$(test_srcs))
+test_file_execs := $(join $(foreach name,$(test_file_names),$(name)/), $(tests)) # Add slash and join with tests
 $(info $(tests))
 $(info $(test_file_names))
 $(info $(test_file_execs))
 
 $(tests):
 	mkdir -p $(test_dir)/$@
+# CC := allocscc
+# CFLAGS += INCLUDE_DIRS
+# CFLAGS += DFLAGS
 
-$(test_file_execs): $(test_srcs) | $(tests)
+$(test_file_execs): $(test_srcs)| $(tests)
 	cd $(@D) && \
 	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} $< -o $(@F) && \
-	cd $(mkfile_dir)
+	cd $(mkfile_dir)	
 
-runt: $(test_file_execs)
-	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so $<
+runtests: $(test_file_execs)
+	for x in $(test_file_execs); do LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so $$x; done
 
 cleanallocs:
 	find . -name '*.allocstubs.o' -o -name '*.allocstubs.c' -o -name '*.allocstubs.i' -o -name '*.allocstubs.s' -o \
