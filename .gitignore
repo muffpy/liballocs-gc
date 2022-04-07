@@ -35,3 +35,10 @@
 *.app
 
 *.txt
+
+debug/*
+
+.gdb_history
+
+# perf
+*.data

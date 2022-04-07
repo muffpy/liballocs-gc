@@ -47,3 +47,15 @@ clean:
 	rm -f *.a
 	rm -f *.o
 	rm -f .*.d
+	rm -f *.allocstubs.o
+	rm -f *.linked.o
+	rm -f *.allocstubs.c
+	rm -f *.allocstubs.i
+	rm -f *.allocstubs.s
+	rm -f *.cil.c
+	rm -f *.cil.i
+	rm -f *.cil.s
+	rm -f *.i
+	rm -f *.i.allocs
+	rm -f *.o.fixuplog
+	rm -f *.out
