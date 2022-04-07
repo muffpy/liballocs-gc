@@ -34,11 +34,12 @@
 *.out
 *.app
 
-*.txt
-
-debug/*
-
-.gdb_history
-
 # perf
 *.data
+
+# other
+*.txt
+debug/*
+.gdb_history
+core
+/tests/**
