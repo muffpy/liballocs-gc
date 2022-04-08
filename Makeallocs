@@ -1,0 +1,16 @@
+# Get name of target test
+mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
+mkfile_dir := $(subst /Makeallocs,,$(mkfile_path))
+$(info $(mkfile_dir))
+test_src := $(patsubst $(test_dir)/%,$(test_dir)/%.c,$(mkfile_dir))
+test_out := $(subst $(test_dir)/,,$(mkfile_dir))
+$(info $(test_src))
+$(info $(test_out))
+
+# Compile
+$(test_out).o: $(test_src)
+	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} -c $< -lallocs
+$(test_out): $(test_out).o
+	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o $@ $< -lallocs
+
+run : $(test_out)

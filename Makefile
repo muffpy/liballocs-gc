@@ -1,4 +1,5 @@
 default: libgc.a
+tests: cleanallocs build-subdirs-and-compile-tests runtests
 
 LD_FLAGS += -lunwind-x86_64 -lunwind
 LIBALLOCS_PATH = usr/local/src/liballocs
@@ -45,48 +46,43 @@ export ELFTIN
 ## Test program ##
 LIBALLOCS_ALLOC_FNS +=
 LIBALLOCS_ALLOC_FNS := GC_malloc(Z)p GC_calloc(zZ)p GC_realloc(pZ)p
-export LIBALLOCS_ALLOC_FNS
+# export LIBALLOCS_ALLOC_FNS
 # LIBALLOCS_FREE_FNS := GC_free(p)
 # export LIBALLOCS_FREE_FNS
 DFLAGS +=
-DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
+# DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
 test.o: test.c
 	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} -c test.c -lallocs
 test : test.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o test $< -lallocs
 run: test
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
+# allocscc ${INCLUDE_DIRS} -o test test.o /home/user/tasks/libgc.a -L/usr/local/src/liballocs/lib -lallocs -lunwind-x86_64 -lunwind
 
 
 ### Testing ####
 test_dir := $(mkfile_dir)/tests
 test_srcs := $(wildcard $(test_dir)/*.c)
-$(info $(test_srcs))
+# $(info $(test_srcs))
 tests := $(patsubst $(test_dir)/%.c,%,$(test_srcs))
 test_file_names := $(patsubst $(test_dir)/%.c,$(test_dir)/%,$(test_srcs))
 test_file_execs := $(join $(foreach name,$(test_file_names),$(name)/), $(tests)) # Add slash and join with tests
-$(info $(tests))
-$(info $(test_file_names))
-$(info $(test_file_execs))
+# $(info $(tests))
+# $(info $(test_file_names))
+# $(info $(test_file_execs))
 
-$(tests):
-	mkdir -p $(test_dir)/$@
-
-# phony! i.e. the commands *always* run; target is not a filename so timestamps are not checked
-# .PHONY: build-subdirs-and-make-tests
-# build-subdirs-and-make-tests:
-# 	for d in $(test_file_names); do \
-# 		$(MAKE) -C $$d; \
-# 	done
-
-# CC := allocscc
-# CFLAGS += INCLUDE_DIRS
-# CFLAGS += DFLAGS
-
-$(test_file_execs): $(test_srcs)| $(tests)
-	cd $(@D) && \
-	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} $< -o $(@F) && \
-	cd $(mkfile_dir)
+# Export these for Makeallocs to use
+export test_dir
+export LD_FLAGS
+export DFLAGS
+export INCLUDE_DIRS
+# Create subdir -> symbolic link Makeallocs inside subdir -> Run make on this file
+build-subdirs-and-compile-tests:
+	for d in $(test_file_names); do \
+		mkdir -p $$d; \
+		ln -sf ${mkfile_dir}/Makeallocs $$d/Makeallocs; \
+		$(MAKE) -f Makeallocs -C $$d run; \
+	done
 
 runtests: $(test_file_execs)
 	for x in $(test_file_execs); do LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so $$x; done
