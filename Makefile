@@ -24,18 +24,23 @@ DLFLAGS += -O3
 DLFLAGS += -fPIC
 DLFLAGS += -ffreestanding
 pdlmalloc.o: dlmalloc.c
-	gcc $(DLFLAGS) -DHAVE_MMAP=0 -DUSE_DL_PREFIX -o $@ $^
-dlmallocpure.o: dlmalloc_pure.c
-	gcc $(DLFLAGS) -DHAVE_MMAP=0 -DUSE_DL_PREFIX -o $@ $^
+	gcc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
+pure.o: dlmalloc_pure.c
+	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
 nopdlmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
 GC_funcs.o: GC_funcs.c
 	gcc ${INCLUDE_DIRS} -c $^
-libgc.a: nopdlmalloc.o dlmallocpure.o GC_funcs.o
+libgc.a: pure.o GC_funcs.o
 	$(AR) r "$@" $^
 LD_FLAGS +=
-LD_FLAGS += -L$(mkfile_dir) -lgc
+LD_FLAGS += $(mkfile_dir)/libgc.a
+#LD_FLAGS += -L. -lgc
 # # LD_FLAGS += -L./boehm/ -lgc # Boehm GC placeholder
+
+include /usr/local/src/liballocs/config.mk
+export ELFTIN
+
 
 ## Test program ##
 LIBALLOCS_ALLOC_FNS +=
@@ -45,8 +50,10 @@ export LIBALLOCS_ALLOC_FNS
 # export LIBALLOCS_FREE_FNS
 DFLAGS +=
 DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
-test : test.c
-	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} -o test test.c
+test.o: test.c
+	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} -c test.c -lallocs
+test : test.o
+	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o test $< -lallocs
 run: test
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
 
@@ -64,6 +71,14 @@ $(info $(test_file_execs))
 
 $(tests):
 	mkdir -p $(test_dir)/$@
+
+# phony! i.e. the commands *always* run; target is not a filename so timestamps are not checked
+# .PHONY: build-subdirs-and-make-tests
+# build-subdirs-and-make-tests:
+# 	for d in $(test_file_names); do \
+# 		$(MAKE) -C $$d; \
+# 	done
+
 # CC := allocscc
 # CFLAGS += INCLUDE_DIRS
 # CFLAGS += DFLAGS
@@ -71,7 +86,7 @@ $(tests):
 $(test_file_execs): $(test_srcs)| $(tests)
 	cd $(@D) && \
 	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} $< -o $(@F) && \
-	cd $(mkfile_dir)	
+	cd $(mkfile_dir)
 
 runtests: $(test_file_execs)
 	for x in $(test_file_execs); do LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so $$x; done
