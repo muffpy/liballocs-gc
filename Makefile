@@ -1,5 +1,5 @@
 default: libgc.a
-tests: cleanallocs build-subdirs-and-compile-tests runtests
+tests: cleanallocs build-subdirs-and-compile-and-run-tests
 
 LD_FLAGS += -lunwind-x86_64 -lunwind
 LIBALLOCS_PATH = usr/local/src/liballocs
@@ -79,16 +79,13 @@ export LD_FLAGS
 export DFLAGS
 export INCLUDE_DIRS
 # Create subdir -> symbolic link Makeallocs inside subdir -> Run make on this file
-build-subdirs-and-compile-tests:
+build-subdirs-and-compile-and-run-tests:
 	for d in $(test_file_names); do \
 		mkdir -p $$d; \
 		ln -sf ${mkfile_dir}/Makeallocs $$d/Makeallocs; \
 		$(MAKE) -f Makeallocs -C $$d run; \
 	done
-
-runtests: $(test_file_execs)
-	for x in $(test_file_execs); do LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so $$x; done
-
+	
 cleanallocs:
 	find . -name '*.allocstubs.o' -o -name '*.allocstubs.c' -o -name '*.allocstubs.i' -o -name '*.allocstubs.s' -o \
 	     -name '*.linked.o' -o -name '*.fixuplog' -o -name '*.o.fixuplog' -o \
