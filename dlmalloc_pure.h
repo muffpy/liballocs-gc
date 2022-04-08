@@ -1,4 +1,4 @@
-void* dlmalloc(size_t);
-void dlfree(void*);
-void* dlcalloc(size_t, size_t);
-void* dlrealloc(void*, size_t);
+void* malloc(size_t);
+void free(void*);
+void* calloc(size_t, size_t);
+void* realloc(void*, size_t);
