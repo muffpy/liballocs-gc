@@ -36,7 +36,7 @@ libgc.a: pure.o GC_funcs.o
 	$(AR) r "$@" $^
 LD_FLAGS +=
 LD_FLAGS += $(mkfile_dir)/libgc.a
-#LD_FLAGS += -L. -lgc
+# LD_FLAGS += -L. -lgc
 # # LD_FLAGS += -L./boehm/ -lgc # Boehm GC placeholder
 
 include /usr/local/src/liballocs/config.mk
@@ -46,11 +46,11 @@ export ELFTIN
 ## Test program ##
 LIBALLOCS_ALLOC_FNS +=
 LIBALLOCS_ALLOC_FNS := GC_malloc(Z)p GC_calloc(zZ)p GC_realloc(pZ)p
-# export LIBALLOCS_ALLOC_FNS
+export LIBALLOCS_ALLOC_FNS
 # LIBALLOCS_FREE_FNS := GC_free(p)
 # export LIBALLOCS_FREE_FNS
 DFLAGS +=
-# DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
+DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
 test.o: test.c
 	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} -c test.c -lallocs
 test : test.o
@@ -60,7 +60,9 @@ run: test
 # allocscc ${INCLUDE_DIRS} -o test test.o /home/user/tasks/libgc.a -L/usr/local/src/liballocs/lib -lallocs -lunwind-x86_64 -lunwind
 
 
-### Testing ####
+### --------
+### Testing 
+#### -------
 test_dir := $(mkfile_dir)/tests
 test_srcs := $(wildcard $(test_dir)/*.c)
 # $(info $(test_srcs))
