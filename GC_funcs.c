@@ -426,7 +426,7 @@ void* GC_malloc(size_t bytes) {
   //   brk_snapshot(brk);
   // }
 
-  rptr = dlmalloc(bytes);
+  rptr = malloc(bytes);
   // if (!rptr) { /* brk threshold reached */
   //   mark_And_sweep(); // GC
   //   brk = sbrk(0); brk_snapshot(brk); /* Get new brk address and pass to dlmalloc */
@@ -441,11 +441,11 @@ void* GC_malloc(size_t bytes) {
 }
 
 void* GC_calloc(size_t nmemb, size_t bytes) {
-  return dlcalloc(nmemb, bytes);
+  return calloc(nmemb, bytes);
 }
 
 void* GC_realloc(void* addr, size_t bytes) {
-  return dlrealloc(addr, bytes);
+  return realloc(addr, bytes);
 }
 
 void GC_free(void* addr){
