@@ -13,4 +13,6 @@ $(test_out).o: $(test_src)
 $(test_out): $(test_out).o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o $@ $< -lallocs
 
+# Preload liballocs and run
 run : $(test_out)
+	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./$<
