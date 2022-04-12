@@ -52,7 +52,7 @@ export LIBALLOCS_ALLOC_FNS
 DFLAGS +=
 DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
 test.o: test.c
-	allocscc ${DFLAGS} ${LD_FLAGS} ${INCLUDE_DIRS} -c test.c -lallocs
+	allocscc ${DFLAGS} ${INCLUDE_DIRS} -c test.c
 test : test.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o test $< -lallocs
 run: test
