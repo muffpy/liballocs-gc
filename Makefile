@@ -1,5 +1,6 @@
 default: libgc.a
 tests: cleanallocs build-subdirs-and-compile-and-run-tests
+cleanall: cleanallocs clean
 
 LD_FLAGS += -lunwind-x86_64 -lunwind
 LIBALLOCS_PATH = usr/local/src/liballocs
@@ -24,15 +25,15 @@ DLFLAGS += -Wall -Wno-unused-label -Wno-comment
 DLFLAGS += -O3
 DLFLAGS += -fPIC
 DLFLAGS += -ffreestanding
-pdlmalloc.o: dlmalloc.c
-	gcc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
-pure.o: dlmalloc_pure.c
+sbrkmalloc.o: dlmalloc.c
+	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
+pures.o: dlmalloc_pure.c
 	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
 nopdlmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
 GC_funcs.o: GC_funcs.c
 	gcc ${INCLUDE_DIRS} -c $^
-libgc.a: pure.o GC_funcs.o
+libgc.a: pures.o GC_funcs.o
 	$(AR) r "$@" $^
 LD_FLAGS +=
 LD_FLAGS += $(mkfile_dir)/libgc.a
@@ -45,18 +46,20 @@ export ELFTIN
 
 ## Test program ##
 LIBALLOCS_ALLOC_FNS +=
-LIBALLOCS_ALLOC_FNS := GC_malloc(Z)p GC_calloc(zZ)p GC_realloc(pZ)p
+LIBALLOCS_ALLOC_FNS := GC_Malloc(Z)p GC_Calloc(zZ)p GC_Realloc(pZ)p
 export LIBALLOCS_ALLOC_FNS
 # LIBALLOCS_FREE_FNS := GC_free(p)
 # export LIBALLOCS_FREE_FNS
 DFLAGS +=
-DFLAGS += -Dmalloc=GC_malloc -Dfree=GC_free -Dcalloc=GC_calloc -Drealloc=GC_realloc
+DFLAGS += -Dmalloc=GC_Malloc -Dfree=GC_Free -Dcalloc=GC_Calloc -Drealloc=GC_Realloc
 test.o: test.c
 	allocscc ${DFLAGS} ${INCLUDE_DIRS} -c test.c
 test : test.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o test $< -lallocs
 run: test
+	touch test.c && \
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
+	
 # allocscc ${INCLUDE_DIRS} -o test test.o /home/user/tasks/libgc.a -L/usr/local/src/liballocs/lib -lallocs -lunwind-x86_64 -lunwind
 
 
