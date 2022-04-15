@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "GC_funcs.h"
-#include "boehm/gc.h"
+// #include "boehm/gc.h"
 
 /* -------------------------------- Test program ----------------------------- */
 

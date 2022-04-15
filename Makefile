@@ -1,4 +1,4 @@
-default: libgc.a
+default: libgc.a test
 tests: cleanallocs build-subdirs-and-compile-and-run-tests
 cleanall: cleanallocs clean
 
@@ -29,10 +29,10 @@ sbrkmalloc.o: dlmalloc.c
 	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
 pures.o: dlmalloc_pure.c
 	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
-nopdlmalloc.o: dlmalloc.c
+mmapmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
 GC_funcs.o: GC_funcs.c
-	gcc ${INCLUDE_DIRS} -c $^
+	gcc ${INCLUDE_DIRS} -g -c $^
 libgc.a: pures.o GC_funcs.o
 	$(AR) r "$@" $^
 LD_FLAGS +=
@@ -54,10 +54,9 @@ DFLAGS +=
 DFLAGS += -Dmalloc=GC_Malloc -Dfree=GC_Free -Dcalloc=GC_Calloc -Drealloc=GC_Realloc
 test.o: test.c
 	allocscc ${DFLAGS} ${INCLUDE_DIRS} -c test.c
-test : test.o
+test : test.o $(mkfile_dir)/libgc.a
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o test $< -lallocs
 run: test
-	touch test.c && \
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
 	
 # allocscc ${INCLUDE_DIRS} -o test test.o /home/user/tasks/libgc.a -L/usr/local/src/liballocs/lib -lallocs -lunwind-x86_64 -lunwind
