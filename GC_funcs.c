@@ -1,7 +1,8 @@
 #include <allocs.h>
 #include <stdio.h>
-// #include "dlmalloc.h"
-#include "dlmalloc_pure.h"
+#include <errno.h>
+#include "dlmalloc.h"
+// #include "dlmalloc_pure.h"
 #include "GC_funcs.h"
 #include <inttypes.h>
 #include "relf.h" /* Contains fake_dladdr and _r_debug */
@@ -14,7 +15,7 @@
 
 /* ------------------ Operations on malloc'd chunks and uniqtypes ------------------*/
 
-#define ok_address(M, a) ((char*)(a) >= (M).least_addr) /* Check address not lower than least address obtained from MORECORE */
+#define ok_address(M, a) (((char*)(a) - (sizeof(size_t) << 1)) >= (M).least_addr) /* Check address not lower than least address obtained from MORECORE */
 /* HACK: archdep */
 #define IS_PLAUSIBLE_POINTER(p) (!(p) || ((p) == (void*) -1) || (((uintptr_t) (p)) >= 4194304 && ((uintptr_t) (p)) < 0x800000000000ul))
 
@@ -29,25 +30,33 @@ typedef struct __uniqtype_node_rec_s
 	struct __uniqtype_node_rec_s *next;
 } __uniqtype_node_rec;
 
-typedef void track_ptr_fn(void**, struct uniqtype**, void*);
+typedef void track_ptr_fn(void**, struct uniqtype**, void**, void*);
 
 /* Check if pointed to object (p_obj) is in heap-allocated storage and set mark bit 
 * if true
 */
-void __uniqtype_follow_ptr_heap(void **p_obj, struct uniqtype **p_t, void* xarg)
+void __uniqtype_follow_ptr_heap(void **p_obj, struct uniqtype **p_t, 
+      void **p_obj_parent, struct uniqtype **p_obj_parent_t,  void* xarg)
 {
   // printf("In followptr with %p \n", *p_obj);
   // printf("", alloc_get_allocator(*x)->name,)
   // struct big_allocation test = __lookup_bigalloc_from_root(*p_obj);
 
+  if (p_obj_parent && p_obj_parent_t){
+      debug_printf("\t%s_at_%p -> %s_at_%p;\n",
+              NAME_FOR_UNIQTYPE(*p_obj_parent_t), *p_obj_parent,
+              NAME_FOR_UNIQTYPE(*p_t), *p_obj);
+  }
+
   struct big_allocation *arena = __lookup_bigalloc_from_root_by_suballocator(*p_obj,
 		&__generic_malloc_allocator, NULL);
     if (arena){ /* If found, find insert for p_obj/chunk returned to applciation by dlmalloc */
       if (!ok_address(_gm_,*p_obj)) {
-        debug_printf("Chunk: %p smaller than least address %p \n", *p_obj, _gm_.least_addr);
+        printf("Chunk: %p smaller than least address %p. We are porbably the global sbrk snapshot.\n", *p_obj, _gm_.least_addr);
         return;
       }
       struct insert *cur_insert = insert_for_chunk(*p_obj);
+      debug_printf("Pageindex of p_obj: %d \n", pageindex[PAGENUM(*p_obj)]);
       debug_printf("flag: %u, site: %lx and bits: %u \n", cur_insert->alloc_site_flag,cur_insert->alloc_site,cur_insert->un.bits);
       
       /* Use bits field inside insert as marker */
@@ -79,14 +88,14 @@ struct chunk_info_table
 void inspect_uniqtype(struct uniqtype* out_type) {
   if (out_type){
     debug_printf("\n");
-    // debug_printf("kind: %d \n", UNIQTYPE_KIND(out_type));
-    // debug_printf("size in bytes? : %u \n", UNIQTYPE_SIZE_IN_BYTES(out_type));
-    // debug_printf("is ptr? %d \n", UNIQTYPE_IS_POINTER_TYPE(out_type));
-    // debug_printf("array length: %u \n", UNIQTYPE_ARRAY_LENGTH(out_type));
-    // debug_printf("array elemnt type: %s \n", UNIQTYPE_NAME(UNIQTYPE_ARRAY_ELEMENT_TYPE(out_type)));
+    debug_printf("kind: %d \n", UNIQTYPE_KIND(out_type));
+    debug_printf("size in bytes? : %u \n", UNIQTYPE_SIZE_IN_BYTES(out_type));
+    debug_printf("is ptr? %d \n", UNIQTYPE_IS_POINTER_TYPE(out_type));
+    debug_printf("array length: %u \n", UNIQTYPE_ARRAY_LENGTH(out_type));
+    debug_printf("array elemnt type: %s \n", UNIQTYPE_NAME(UNIQTYPE_ARRAY_ELEMENT_TYPE(out_type)));
     debug_printf("name: %s \n", UNIQTYPE_NAME(out_type));
-    // debug_printf("pointee type: %d \n", UNIQTYPE_POINTEE_TYPE(out_type));
-    // debug_printf("is composite type? %d \n", UNIQTYPE_IS_COMPOSITE_TYPE(out_type));
+    debug_printf("pointee type: %d \n", UNIQTYPE_POINTEE_TYPE(out_type));
+    debug_printf("is composite type? %d \n", UNIQTYPE_IS_COMPOSITE_TYPE(out_type));
     debug_printf("\n");
   }
 }
@@ -137,10 +146,10 @@ void *scan_all_allocated_chunks(struct arena_bitmap_info* info,
           cur_userchunk = (void*)((uintptr_t) info->bitmap_base_addr
                   + (cur_bit_idx * MALLOC_ALIGN));
 
-          if (!ok_address(_gm_,cur_userchunk)) {
-            // printf("Chunk: %p smaller than least address %p \n", cur_userchunk, _gm_.least_addr);
-            continue;
-          }
+          // if (!ok_address(_gm_,cur_userchunk)) {
+          //   // printf("Chunk: %p smaller than least address %p \n", cur_userchunk, _gm_.least_addr);
+          //   continue;
+          // }
           debug_printf("Walking a chunk at %p (bitmap array base addr: %p) idx %d\n", cur_userchunk,
                   (void*) info->bitmap_base_addr, (int) cur_bit_idx % 64);
           assert(IS_PLAUSIBLE_POINTER(cur_userchunk));
@@ -210,7 +219,36 @@ void inspect_allocs() {
         }
       }
       debug_printf("\n");
-      scan_all_allocated_chunks(info,NULL,NULL);
+      void *cur_userchunk;unsigned long cur_bit_idx = -1;
+      /* Iterate forward over bits */
+      while ((unsigned long)-1 != (cur_bit_idx = bitmap_find_first_set1_geq_l(
+                      info->bitmap, info->bitmap + info->nwords,
+                      cur_bit_idx + 1, NULL)))
+      {
+          cur_userchunk = (void*)((uintptr_t) info->bitmap_base_addr
+                      + (cur_bit_idx * MALLOC_ALIGN));
+
+          printf("Walking a chunk at %p (bitmap array base addr: %p) idx %d\n", cur_userchunk,
+                  (void*) info->bitmap_base_addr, (int) cur_bit_idx % 64);
+          struct insert *cur_insert = insert_for_chunk(cur_userchunk);
+          printf("flag: %u, site: 0x%lx and bits: %u \n", cur_insert->alloc_site_flag,cur_insert->alloc_site, cur_insert->un.bits);
+          
+          struct uniqtype *out_type;
+          const void *site;
+          liballocs_err_t err = extract_and_output_alloc_site_and_type(cur_insert, &out_type, &site);
+          if (!err && out_type) {
+            printf("\n");
+            printf("kind: %d \n", UNIQTYPE_KIND(out_type));
+            printf("size in bytes? : %u \n", UNIQTYPE_SIZE_IN_BYTES(out_type));
+            printf("is ptr? %d \n", UNIQTYPE_IS_POINTER_TYPE(out_type));
+            printf("array length: %u \n", UNIQTYPE_ARRAY_LENGTH(out_type));
+            printf("array elemnt type: %s \n", UNIQTYPE_NAME(UNIQTYPE_ARRAY_ELEMENT_TYPE(out_type)));
+            printf("name: %s \n", UNIQTYPE_NAME(out_type));
+            printf("pointee type: %d \n", UNIQTYPE_POINTEE_TYPE(out_type));
+            printf("is composite type? %d \n", UNIQTYPE_IS_COMPOSITE_TYPE(out_type));
+            printf("\n");
+          }  
+      }
       // sanity_check_bitmap(info);
     }
   }
@@ -318,19 +356,19 @@ static void* metavector_follow_ptr_to_heap(void *obj_start, struct uniqtype* obj
           if (!possible_ptr_to_heap) return NULL; /* Weird error - wrongly identified uniqtype? */
           debug_printf("Possible ptr to malloc: %p \n", possible_ptr_to_heap);
 
-          struct big_allocation* big = __lookup_bigalloc_top_level(obj_start);
-          debug_printf("Top alloc entry starts at %p ends at %p\n", big->begin, big->end);
-          struct big_allocation* deep = __lookup_deepest_bigalloc(obj_start);
-          debug_printf("Deep alloc entry starts at %p ends at %p\n", deep->begin, deep->end);
-          struct allocator *leaf_alloc = __liballocs_leaf_allocator_for(possible_ptr_to_heap, &deep);
-          debug_printf("Leaf alloc: %s \n", leaf_alloc->name);
+          // struct big_allocation* big = __lookup_bigalloc_top_level(obj_start);
+          // debug_printf("Top alloc entry starts at %p ends at %p\n", big->begin, big->end);
+          // struct big_allocation* deep = __lookup_deepest_bigalloc(obj_start);
+          // debug_printf("Deep alloc entry starts at %p ends at %p\n", deep->begin, deep->end);
+          // struct allocator *leaf_alloc = __liballocs_leaf_allocator_for(possible_ptr_to_heap, &deep);
+          // debug_printf("Leaf alloc: %s \n", leaf_alloc->name);
 
           // /* Check if address points to a heap object */
-          if (leaf_alloc == &__generic_malloc_allocator){
+          // if (leaf_alloc == &__generic_malloc_allocator){
             struct uniqtype *pointed_to_static_t = UNIQTYPE_POINTEE_TYPE(obj_type);
             /* Mark this object */
-            __uniqtype_follow_ptr_heap(obj_start, &pointed_to_static_t, NULL);
-          }
+            __uniqtype_follow_ptr_heap(obj_start, &pointed_to_static_t, NULL, NULL, NULL);
+          // }
         }
         else { /* If we have a thing with a structure, recurse through it to find pointers */
           char ms[] = "malloc_state"; char mp[] = "malloc_params"; 
@@ -388,14 +426,14 @@ void scan_segments_of_executable(void* (*metavector_fn)(void*, struct uniqtype *
             struct uniqtype *xtype = alloc_get_type(x);
             struct allocator *xalloc = alloc_get_allocator(x);
             unsigned long xsz = alloc_get_size(x); 
-            // debug_printf("At %p is a %s-allocated object of size %u, type %s, composite type? %lx and kind %d\n\n",
-            //         x,
-            //         xalloc ? xalloc->name : "no alloc found",
-            //         xsz,
-            //         xtype ? UNIQTYPE_NAME(xtype) : "no type found",
-            //         xtype ? UNIQTYPE_IS_COMPOSITE_TYPE(xtype) : 0U,
-            //         xtype ? UNIQTYPE_KIND(xtype) : 0
-            //       );
+            debug_printf("At %p is a %s-allocated object of size %u, type %s, composite type? %lx and kind %d\n\n",
+                    x,
+                    xalloc ? xalloc->name : "no alloc found",
+                    xsz,
+                    xtype ? UNIQTYPE_NAME(xtype) : "no type found",
+                    xtype ? UNIQTYPE_IS_COMPOSITE_TYPE(xtype) : 0U,
+                    xtype ? UNIQTYPE_KIND(xtype) : 0
+                  );
             if (metavector_fn && xtype) {
               void* ret = NULL;
               ret = metavector_fn(x, xtype, xarg);
@@ -410,8 +448,7 @@ void scan_segments_of_executable(void* (*metavector_fn)(void*, struct uniqtype *
 /* ------------------------------- Mark-and-sweep ----------------------------- */
 
 #define RECENTLY_ALLOCATED_ARENAS_LIST_SIZE 20
-static void *recently_allocated_arenas[RECENTLY_ALLOCATED_ARENAS_LIST_SIZE];
-
+struct big_allocation *malloc_arena = NULL;
   /* 
   * Mark phase depth first search - 
   * iterate over root objects that contain pointers to heap storage which has been allocated to the user by malloc
@@ -435,12 +472,12 @@ void mark_static_allocs() {
 /* 
 * Removes mark bit from a black object and frees white objects
 */
-void *sweep_garbage(struct chunk_info_table *tab, void **arena_ptr){
+void *sweep_garbage(struct chunk_info_table *tab, void *xarg){
   // printf("Insert in sweep(): flag: %u, site: 0x%lx and bits: %u \n", tab->ins->alloc_site_flag,tab->ins->alloc_site, tab->ins->un.bits);
   if (tab->ins->un.bits & 0x1) /* If marked, unmark*/ {tab->ins->un.bits ^= 1;}
   // else if (tab->ins->alloc_site_flag) { } /* Ignore inserts that are types*/
   else { /* Free the unreachable garbage */
-    struct big_allocation *arena = *arena_ptr;
+    struct big_allocation *arena = malloc_arena;
     debug_printf("*** Deleting entry for chunk %p, from bitmap at %p\n", 
 		tab->cur_chunk);
     __liballocs_bitmap_delete(arena, tab->cur_chunk);
@@ -452,48 +489,50 @@ void *sweep_garbage(struct chunk_info_table *tab, void **arena_ptr){
 void sweep() 
 {
   debug_printf("\nSweeping allocs --- \n");
-  for (int i = 0; i < NBIGALLOCS; ++i) {
-    // printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
-    if (big_allocations[i].suballocator == &__generic_malloc_allocator 
-          && big_allocations[i].allocated_by == &__brk_allocator)
-    {
-      debug_printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
-      struct big_allocation *arena = &big_allocations[i];
-      struct arena_bitmap_info *info = arena->suballocator_private;
-      bitmap_word_t *bitmap = info->bitmap;
-
-      debug_printf("Bitmap: %"PRIxPTR"\n", bitmap);
-      // for (int i= 0; i < info->nwords; ++i) {
-      //   if (info->bitmap[i]){
-      //     printf("Word at position %i is %lx \n", i, info->bitmap[i]);
-      //   }
-      // }
-      debug_printf("nwords: %lu \n", info->nwords);
-      scan_all_allocated_chunks(info,sweep_garbage,&arena);
+  if (!malloc_arena) { /* First collection run - we precompute arena for upcoming runs*/
+    for (int i = 0; i < NBIGALLOCS; ++i) {
+      // printf("Big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
+      if (big_allocations[i].suballocator == &__generic_malloc_allocator 
+            && big_allocations[i].allocated_by == &__brk_allocator)
+      {
+        debug_printf("Malloc arena big alloc entry %i starts at %p ends at %p\n", i, big_allocations[i].begin, big_allocations[i].end);
+        
+        malloc_arena = &big_allocations[i];
+      }
     }
   }
+    struct arena_bitmap_info *info = malloc_arena->suballocator_private;
+    bitmap_word_t *bitmap = info->bitmap;
+
+    debug_printf("Bitmap: %"PRIxPTR"\n", bitmap);
+    for (int i= 0; i < info->nwords; ++i) {
+      if (info->bitmap[i]){
+        debug_printf("Word at position %i is %lx \n", i, info->bitmap[i]);
+      }
+    }
+    debug_printf("nwords: %lu \n", info->nwords);
+    scan_all_allocated_chunks(info,sweep_garbage,NULL);
+
   debug_printf("Finished sweep --- \n");
+
+  // inspect_allocs();
 }
 
 #define mark_And_sweep() {mark_stack_and_register_roots();mark_static_allocs();sweep();}
 
-int snap_brk = 0;
 int GC_counter = 100; /* Every 5 mallocs, we garbage collect*/
+int GCing = 0;
 void* GC_Malloc(size_t bytes) {
-  // while (GC_counter == -1) {
-  //   printf("spinning \n");
-  //   continue; /* Bad spinlock */
-  // }
 
-  debug_printf("You're inside GC_Malloc \n");
+  // debug_printf("You're inside GC_Malloc \n");
   // inspect_allocs();
-  GC_counter = GC_counter - 1;
-  if (GC_counter == 0){
-    GC_counter = -1;
-    mark_And_sweep();
-    inspect_allocs();
-    GC_counter = 100;
-  }
+  // GC_counter = GC_counter - 1;
+  // if (GC_counter == 0){
+  //   GC_counter = -1;
+  //   mark_And_sweep();
+  //   // inspect_allocs();
+  //   GC_counter = 100;
+  // }
   
   void *rptr, *brk, *rptr2 = NULL;
   // if (!snap_brk){
@@ -501,18 +540,19 @@ void* GC_Malloc(size_t bytes) {
   //   printf("First snapshot: %p \n",brk);
   //   brk_snapshot(brk);
   // }
-
+  while (GCing) continue;
   rptr = malloc(bytes);
-  // if (!rptr) { /* brk threshold reached */
-  //   mark_And_sweep(); // GC
-  //   brk = sbrk(0); brk_snapshot(brk); /* Get new brk address and pass to dlmalloc */
-  //   rptr2 = dlmalloc(bytes); /* try again */
+  if (!rptr) { /* brk threshold reached */
+    GCing = 1;
+    mark_And_sweep(); // GC
+    rptr2 = malloc(bytes); /* try again */
 
-  //   if (!rptr2) { /* Bad - ran out of heap space */
-  //     printf("Out of space"); exit(0);
-  //   }
-  // }
-  
+    if (!rptr2) { /* Bad - ran out of heap space */
+      errno = ENOMEM;
+      printf("Out of space; errno code: %d\n", errno); exit(0);
+    }
+  }
+  GCing = 0;
 //  inspect_allocs();
   return rptr;
 }
@@ -526,5 +566,5 @@ void* GC_Realloc(void* addr, size_t bytes) {
 }
 
 void GC_Free(void* addr){
-  return;
+  return free(addr);
 }

@@ -1425,7 +1425,7 @@ DLMALLOC_EXPORT int mspace_mallopt(int, int);
   ========================================================================
 */
 
-#include "dlmalloc.h"
+/* #include "malloc.h" */
 
 /*------------------------------ internal #includes ---------------------- */
 
@@ -1705,27 +1705,48 @@ static FORCEINLINE int win32munmap(void* ptr, size_t size) {
 #endif /* HAVE_MREMAP */
 
 /**
- * Define CALL_MORECORE
+ * Define MORECORE threshold for collection
  */
 #if HAVE_MORECORE
 #include <stdint.h>
-void *brk_snap;
-#define MORECORE_THRESHOLD 0x100000 /* 1 MB of memory can be used before collection */
-static void* _morecore(size_t call_size){
-  if (call_size == 0) return MORECORE_DEFAULT(0); /* Program was requesting current address of brk */
-  printf("Inside _morecore \n");
-  void* new_brk = (void*) (call_size + (uintptr_t) (MORECORE_DEFAULT(0)));
-  void* brk_threshold = (void*) (MORECORE_THRESHOLD + (uintptr_t) (brk_snap));
-  printf("With call size %zu, brk snap %p, brk threshold %p: new_brk will be at %p \n",
-    call_size, brk_snap, brk_threshold, new_brk);
-  if (new_brk > brk_threshold) return MFAIL;
+#define DEBUG_TEST 0
+#define debug_print_string(s) \
+            do { if (DEBUG_TEST) raw_syscall_write_string(s); } while (0)
+#define debug_print_long(s) \
+            do { if (DEBUG_TEST) raw_syscall_write_ulong(s); } while (0)
+
+void *brk_threshold;
+#define MORECORE_THRESHOLD 5*2*1024ul /* 10KB of memory can be used before collection */
+static void* _morecore(size_t increment){
+  if (increment == 0) return MORECORE_DEFAULT(0); /* Program was requesting current address of brk */
+  if (!brk_threshold) {
+    debug_print_string("Either just started program or fresh from collection!\n");
+    brk_threshold = (void*) ((uintptr_t) MORECORE_DEFAULT(0) + MORECORE_THRESHOLD) ;
+  }
+
+  debug_print_string("Inside morecore..\n");
+  void* new_brk = (void*) (increment + (uintptr_t) (MORECORE_DEFAULT(0)));
+  // void* brk_threshold = (void*) ( MORECORE_THRESHOLD + (uintptr_t) (brk_snap) );
+  // fprintf(stdout, "With call size %zu, brk snap %p, brk threshold %p: new_brk will be at %p \n",
+  //   increment, brk_snap, brk_threshold, new_brk);
+  // debug_print_string("\n brk snap      : "); debug_print_long((unsigned long) brk_snap);
+  debug_print_string("\n new brk       : "); debug_print_long((unsigned long) new_brk);
+  debug_print_string("\n brk threshold : "); debug_print_long((unsigned long) brk_threshold);
+  debug_print_string("\n");
+  if (new_brk > brk_threshold) {
+    debug_print_string("Threshold reached. Need to COOlect memory now. \n");
+    return MFAIL; /* Fail first to trigger GC*/
+  }
   else {
-    return MORECORE_DEFAULT(call_size);
+    return MORECORE_DEFAULT(increment);
   }
 }
-#define MORECORE(S) _morecore(S)
 #endif
 
+
+/**
+ * Define CALL_MORECORE
+ */
 #if HAVE_MORECORE
     #ifdef MORECORE
         #define CALL_MORECORE(S)    MORECORE(S)
@@ -2646,7 +2667,7 @@ static struct malloc_params mparams;
 #if !ONLY_MSPACES
 
 /* The global malloc_state used for all non-"mspace" calls */
-static struct malloc_state _gm_;
+struct malloc_state _gm_;
 #define gm                 (&_gm_)
 #define is_global(M)       ((M) == &_gm_)
 
@@ -4047,6 +4068,7 @@ static void add_segment(mstate m, char* tbase, size_t tsize, flag_t mmapped) {
 
 /* -------------------------- System allocation -------------------------- */
 
+
 /* Get memory from system using MORECORE or MMAP */
 static void* sys_alloc(mstate m, size_t nb) {
   char* tbase = CMFAIL;
@@ -4095,7 +4117,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   */
 
   if (MORECORE_CONTIGUOUS && !use_noncontiguous(m)) {
-    printf("Trying continguous morecore first \n");
+    debug_print_string("Trying continguous morecore first \n");
     char* br = CMFAIL;
     size_t ssize = asize; /* sbrk call size */
     msegmentptr ss = (m->top == 0)? 0 : segment_holding(m, (char*)m->top);
@@ -4139,7 +4161,7 @@ static void* sys_alloc(mstate m, size_t nb) {
             if (end != CMFAIL)
               ssize += esize;
             else {            /* Can't use; try to release */
-              CALL_MORECORE(-ssize);
+              (void) CALL_MORECORE(-ssize);
               br = CMFAIL;
             }
           }
@@ -4157,7 +4179,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   }
 
   if (HAVE_MMAP && tbase == CMFAIL) {  /* Try MMAP */
-    // printf("We tried mmap! \n");
+    debug_print_string("We tried mmap! \n");
     char* mp = (char*)(CALL_MMAP(asize));
     if (mp != CMFAIL) {
       tbase = mp;
@@ -4167,7 +4189,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   }
 
   if (HAVE_MORECORE && tbase == CMFAIL) { /* Try noncontiguous MORECORE */
-    printf("Trying non-continguous morecore first \n");
+    debug_print_string("Trying non-continguous morecore now \n");
     if (asize < HALF_MAX_SIZE_T) {
       char* br = CMFAIL;
       char* end = CMFAIL;
@@ -4187,7 +4209,7 @@ static void* sys_alloc(mstate m, size_t nb) {
 
   if (tbase != CMFAIL) {
 #if HAVE_MORECORE
-    printf("Sbrk call worked; tbase: %p, tsize: %zu \n", tbase, tsize);
+    debug_print_string("Sbrk call worked;\n");
 #endif
     if ((m->footprint += tsize) > m->max_footprint)
       m->max_footprint = m->footprint;
@@ -4257,9 +4279,11 @@ static void* sys_alloc(mstate m, size_t nb) {
     }
   }
 #if HAVE_MORECORE
-  printf("Sbrk failed \n");
+  debug_print_string("Sbrk failed \n");
+  brk_threshold = NULL; /* Set this global pointer to NULL so it doesn't get picked up during the marking phase*/
 #endif
-  MALLOC_FAILURE_ACTION;
+  debug_print_string("\n");
+  // MALLOC_FAILURE_ACTION;
   return 0;
 }
 
@@ -4562,18 +4586,7 @@ static void* tmalloc_small(mstate m, size_t nb) {
 
 #if !ONLY_MSPACES
 
-
-#if HAVE_MORECORE
-void brk_snapshot(void* brk_snap_after_gc) {
-  printf("brk snap in dlmalloc: %p ", brk_snap);
-  printf("brk snapshot from gc: %p ", brk_snap_after_gc);
-  printf("Difference in bytes: %d \n", (uintptr_t) (brk_snap_after_gc) - (uintptr_t) (brk_snap));
-  if (brk_snap_after_gc) brk_snap = brk_snap_after_gc;
-}
-#endif
-
 void* dlmalloc(size_t bytes) {
-
   /*
      Basic algorithm:
      If a small request (< 256 bytes minus per-chunk overhead):
