@@ -26,14 +26,14 @@ DLFLAGS += -O3
 DLFLAGS += -fPIC
 DLFLAGS += -ffreestanding
 sbrkmalloc.o: dlmalloc.c
-	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
+	allocscc $(DLFLAGS) $(INCLUDE_DIRS) -DHAVE_MMAP=0 -DHAVE_MORECORE=1 -DMORECORE=_morecore -o $@ $^
 pures.o: dlmalloc_pure.c
-	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -o $@ $^
+	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -DHAVE_MORECORE=1 -o $@ $^
 mmapmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
 GC_funcs.o: GC_funcs.c
 	gcc ${INCLUDE_DIRS} -g -c $^
-libgc.a: pures.o GC_funcs.o
+libgc.a: sbrkmalloc.o GC_funcs.o
 	$(AR) r "$@" $^
 LD_FLAGS +=
 LD_FLAGS += $(mkfile_dir)/libgc.a
@@ -43,7 +43,6 @@ LD_FLAGS += $(mkfile_dir)/libgc.a
 include /usr/local/src/liballocs/config.mk
 export ELFTIN
 
-
 ## Test program ##
 LIBALLOCS_ALLOC_FNS +=
 LIBALLOCS_ALLOC_FNS := GC_Malloc(Z)p GC_Calloc(zZ)p GC_Realloc(pZ)p
@@ -52,9 +51,10 @@ export LIBALLOCS_ALLOC_FNS
 # export LIBALLOCS_FREE_FNS
 DFLAGS +=
 DFLAGS += -Dmalloc=GC_Malloc -Dfree=GC_Free -Dcalloc=GC_Calloc -Drealloc=GC_Realloc
-test.o: test.c
+
+test.o: test.c $(mkfile_dir)/libgc.a
 	allocscc ${DFLAGS} ${INCLUDE_DIRS} -c test.c
-test : test.o $(mkfile_dir)/libgc.a
+test : test.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o test $< -lallocs
 run: test
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
