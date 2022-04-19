@@ -1709,7 +1709,7 @@ static FORCEINLINE int win32munmap(void* ptr, size_t size) {
  */
 #if HAVE_MORECORE
 #include <stdint.h>
-#define DEBUG_TEST 0
+#define DEBUG_TEST 1
 #define debug_print_string(s) \
             do { if (DEBUG_TEST) raw_syscall_write_string(s); } while (0)
 #define debug_print_long(s) \
