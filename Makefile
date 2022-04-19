@@ -16,10 +16,14 @@ mkfile_path := $(abspath $(lastword $(MAKEFILE_LIST)))
 mkfile_dir := $(subst /Makefile,,$(mkfile_path))
 INCLUDE_DIRS += -I$(mkfile_dir)
 
-# Build 3 versions of dlmalloc and archive them with gc functions in libgc.a
-# pdlmalloc.o - disable mmap() for sys alloc, create functions with dl prefix and contains morecore wrapper for gc
-# nopdlmalloc.o - disable sbrk() and creat functions without dl prefix
-# dlmallocpure.o - disable mmap() fallback and create functions with dl prefix
+####
+### Building liballocs-gc #####
+#####
+## Build 3 versions of dlmalloc and archive them with gc functions in libgc.a
+# sbrkmalloc.o : only uses sbrk for allocation and custom morecore function used for collection threshold
+# pures.o : unedited dlmalloc from https://github.com/stephenrkell/libhighmalloc/blob/master/dlmalloc.c
+# mmapmalloc.o : morecore is disabled
+
 DLFLAGS += -g -c
 DLFLAGS += -Wall -Wno-unused-label -Wno-comment
 DLFLAGS += -O3
@@ -31,13 +35,23 @@ pures.o: dlmalloc_pure.c
 	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -DHAVE_MORECORE=1 -o $@ $^
 mmapmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
+
+## Build 2 versions of GC_funcs
+# DEBUG_TEST can be set if debugging printfs need to be enbaled
+# GC_funcs.o : uses sbrk threshold (same macro used as dlmalloc - HAVE_MORECORE) when deciding to garbage collect
+# GC_funcs2.o : uses an input counter when deciding to garbage collect. Each malloc() call decrements counter by 1
 GC_funcs.o: GC_funcs.c
-	gcc ${INCLUDE_DIRS} -g -c $^
-libgc.a: sbrkmalloc.o GC_funcs.o
+	gcc ${INCLUDE_DIRS} -DCOUNTER=100 -DDEBUG_TEST=1 -g -c $^
+GC_funcs2.o : GC_funcs.c
+	gcc ${INCLUDE_DIRS} -DCOUNTER=100 -DDEBUG_TEST=1 -g -o $@ -c $^
+
+## Build 2 versions of libgc
+libgc.a: pures.o GC_funcs.o
+	$(AR) r "$@" $^
+libgc2.a: pures.o GC_funcs2.o
 	$(AR) r "$@" $^
 LD_FLAGS +=
 LD_FLAGS += $(mkfile_dir)/libgc.a
-# LD_FLAGS += -L. -lgc
 # # LD_FLAGS += -L./boehm/ -lgc # Boehm GC placeholder
 
 include /usr/local/src/liballocs/config.mk
