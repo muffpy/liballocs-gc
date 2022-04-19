@@ -9,7 +9,10 @@
 #include "heap_index.h"
 
 /* --- debugging --- */
+#ifndef DEBUG_TEST
 #define DEBUG_TEST 0
+#endif
+
 #define debug_printf(fmt, ...) \
             do { if (DEBUG_TEST) fprintf(stdout, fmt, ##__VA_ARGS__); } while (0)
 
@@ -17,7 +20,7 @@
 
 #define ok_address(M, a) (((char*)(a) - (sizeof(size_t) << 1)) >= (M).least_addr) /* Check address not lower than least address obtained from MORECORE */
 /* HACK: archdep */
-#define IS_PLAUSIBLE_POINTER(p) (!(p) || ((p) == (void*) -1) || (((uintptr_t) (p)) >= 4194304 && ((uintptr_t) (p)) < 0x800000000000ul))
+#define IS_PLAUSIBLE_POINTER(p) ((p) && ((p) != (void*) -1) && (((uintptr_t) (p)) >= 4194304 && ((uintptr_t) (p)) < 0x800000000000ul))
 
 extern struct malloc_state _gm_;
 
@@ -30,41 +33,53 @@ typedef struct __uniqtype_node_rec_s
 	struct __uniqtype_node_rec_s *next;
 } __uniqtype_node_rec;
 
-typedef void track_ptr_fn(void**, struct uniqtype**, void**, void*);
+typedef int track_ptr_fn(void**, struct uniqtype**, void**, void*);
+
+void mark_chunk(struct insert* ins){
+  /* Use bits field inside insert as marker */
+  unsigned bits = ins->un.bits;
+  if (bits & 0x1 == 1) {debug_printf("Mark bit already set, possibly by interior pointer to chunk. Exiting follow_ptr_fn\n"); return;} // Check mark bit isn't set. That would be strange
+  ins->un.bits ^= 1; // Flip LSB
+  // printf("New bits: %u \n",cur_insert->un.bits);
+}
 
 /* Check if pointed to object (p_obj) is in heap-allocated storage and set mark bit 
 * if true
 */
-void __uniqtype_follow_ptr_heap(void **p_obj, struct uniqtype **p_t, 
+int __uniqtype_follow_ptr_heap(void **p_obj, struct uniqtype **p_t, 
       void **p_obj_parent, struct uniqtype **p_obj_parent_t,  void* xarg)
 {
-  // printf("In followptr with %p \n", *p_obj);
-  // printf("", alloc_get_allocator(*x)->name,)
-  // struct big_allocation test = __lookup_bigalloc_from_root(*p_obj);
-
-  if (p_obj_parent && p_obj_parent_t){
-      debug_printf("\t%s_at_%p -> %s_at_%p;\n",
-              NAME_FOR_UNIQTYPE(*p_obj_parent_t), *p_obj_parent,
-              NAME_FOR_UNIQTYPE(*p_t), *p_obj);
-  }
-
-  struct big_allocation *arena = __lookup_bigalloc_from_root_by_suballocator(*p_obj,
-		&__generic_malloc_allocator, NULL);
-    if (arena){ /* If found, find insert for p_obj/chunk returned to applciation by dlmalloc */
-      if (!ok_address(_gm_,*p_obj)) {
-        printf("Chunk: %p smaller than least address %p. We are porbably the global sbrk snapshot.\n", *p_obj, _gm_.least_addr);
-        return;
-      }
-      struct insert *cur_insert = insert_for_chunk(*p_obj);
-      debug_printf("Pageindex of p_obj: %d \n", pageindex[PAGENUM(*p_obj)]);
-      debug_printf("flag: %u, site: %lx and bits: %u \n", cur_insert->alloc_site_flag,cur_insert->alloc_site,cur_insert->un.bits);
-      
-      /* Use bits field inside insert as marker */
-      unsigned bits = cur_insert->un.bits;
-      if (bits & 0x1 == 1) {debug_printf("Mark bit already set, possibly by interior pointer to chunk. Exiting follow_ptr_fn\n"); return;} // Check mark bit isn't set. That would be strange
-      cur_insert->un.bits ^= 1; // Flip LSB
-      // printf("New bits: %u \n",cur_insert->un.bits);
+    if (p_obj_parent && p_obj_parent_t){
+        debug_printf("\t%s_at_%p -> %s_at_%p;\n",
+                NAME_FOR_UNIQTYPE(*p_obj_parent_t), *p_obj_parent,
+                NAME_FOR_UNIQTYPE(*p_t), *p_obj);
     }
+
+    struct big_allocation *arena = __lookup_bigalloc_from_root_by_suballocator(*p_obj,
+      &__generic_malloc_allocator, NULL);
+      if (arena){ /* If found, find insert for p_obj/chunk returned to applciation by dlmalloc */
+        assert(ok_address(_gm_,*p_obj));
+        // if (!ok_address(_gm_,*p_obj)) {
+        //   printf("Chunk: %p smaller than least address %p. We are porbably the global sbrk snapshot.\n", *p_obj, _gm_.least_addr);
+        //   return;
+        // }
+        debug_printf("Pageindex of p_obj: %d \n", pageindex[PAGENUM(*p_obj)]);
+        debug_printf("sbrk(0): %p\n", sbrk(0));
+
+        struct insert *cur_insert = insert_for_chunk(*p_obj);
+        // assert(IS_PLAUSIBLE_POINTER(cur_insert));
+        assert(ok_address(_gm_,cur_insert));
+        assert(cur_insert < sbrk(0));
+        // if (!IS_PLAUSIBLE_POINTER(cur_insert) || !ok_address(_gm_,cur_insert) || cur_insert > sbrk(0)) return;
+        // if (!IS_PLAUSIBLE_POINTER(cur_insert) || cur_insert > sbrk(0)) return;
+        debug_printf("flag: %u, site: %lx and bits: %u \n", cur_insert->alloc_site_flag,cur_insert->alloc_site,cur_insert->un.bits);
+        
+        mark_chunk(cur_insert);
+        
+        return 1; /* Success marking */
+      }
+
+      return 0; /* Pointer does not point to cached heap arena */
 }
 
 void uniqtype_bfs(struct uniqtype* t, void *obj_start, unsigned start_offset, track_ptr_fn *track_fn){
@@ -173,12 +188,12 @@ void *scan_all_allocated_chunks(struct arena_bitmap_info* info,
             .bitmap_info = info
           };
 
+          view_chunk_uniqtype_metadata(&tab, fn_arg);
+
           if (chunk_fn) {
             ret = chunk_fn(&tab, fn_arg);
             if (ret) return ret;
           }
-          
-          view_chunk_uniqtype_metadata(&tab, fn_arg);
   }
   fail:
     return NULL;
@@ -356,20 +371,11 @@ static void* metavector_follow_ptr_to_heap(void *obj_start, struct uniqtype* obj
           if (!possible_ptr_to_heap) return NULL; /* Weird error - wrongly identified uniqtype? */
           debug_printf("Possible ptr to malloc: %p \n", possible_ptr_to_heap);
 
-          // struct big_allocation* big = __lookup_bigalloc_top_level(obj_start);
-          // debug_printf("Top alloc entry starts at %p ends at %p\n", big->begin, big->end);
-          // struct big_allocation* deep = __lookup_deepest_bigalloc(obj_start);
-          // debug_printf("Deep alloc entry starts at %p ends at %p\n", deep->begin, deep->end);
-          // struct allocator *leaf_alloc = __liballocs_leaf_allocator_for(possible_ptr_to_heap, &deep);
-          // debug_printf("Leaf alloc: %s \n", leaf_alloc->name);
-
-          // /* Check if address points to a heap object */
-          // if (leaf_alloc == &__generic_malloc_allocator){
-            struct uniqtype *pointed_to_static_t = UNIQTYPE_POINTEE_TYPE(obj_type);
-            /* Mark this object */
-            __uniqtype_follow_ptr_heap(obj_start, &pointed_to_static_t, NULL, NULL, NULL);
-          // }
+          struct uniqtype *pointed_to_static_t = UNIQTYPE_POINTEE_TYPE(obj_type);
+          int ret = __uniqtype_follow_ptr_heap(obj_start, &pointed_to_static_t, NULL, NULL, NULL);
+          return ret;
         }
+
         else { /* If we have a thing with a structure, recurse through it to find pointers */
           char ms[] = "malloc_state"; char mp[] = "malloc_params"; 
           int malloc_state_or_param;
@@ -382,7 +388,7 @@ static void* metavector_follow_ptr_to_heap(void *obj_start, struct uniqtype* obj
       }
         // struct insert *cur_insert = insert_for_chunk(x);
         // printf("flag: %u, site: %lx and bits: %u \n", cur_insert->alloc_site_flag,cur_insert->alloc_site,cur_insert->un.bits);
-  return NULL;
+  return 0; /* Unreachable */
 }
 
 /*
@@ -415,29 +421,25 @@ void scan_segments_of_executable(void* (*metavector_fn)(void*, struct uniqtype *
             if (!metavector[i].is_reloc) {
               t = (struct uniqtype *)(((uintptr_t) metavector[i].sym.uniqtype_ptr_bits_no_lowbits)<<3);
             }
-            // debug_printf("At %016lx there is a static alloc of kind %u, idx %08u, type %s\n",
-            //   afile->m.l->l_addr + base_vaddr,
-            //   (unsigned) (metavector[i].is_reloc ? REC_RELOC : metavector[i].sym.kind),
-            //   (unsigned) (metavector[i].is_reloc ? 0 : metavector[i].sym.idx),
-            //   UNIQTYPE_NAME(t)
-            // );
 
             void *x = (afile->m.l->l_addr + base_vaddr);
             struct uniqtype *xtype = alloc_get_type(x);
             struct allocator *xalloc = alloc_get_allocator(x);
-            unsigned long xsz = alloc_get_size(x); 
-            debug_printf("At %p is a %s-allocated object of size %u, type %s, composite type? %lx and kind %d\n\n",
-                    x,
-                    xalloc ? xalloc->name : "no alloc found",
-                    xsz,
-                    xtype ? UNIQTYPE_NAME(xtype) : "no type found",
-                    xtype ? UNIQTYPE_IS_COMPOSITE_TYPE(xtype) : 0U,
-                    xtype ? UNIQTYPE_KIND(xtype) : 0
-                  );
+            unsigned long xsz = alloc_get_size(x);
+            // debug_printf("At %p is a %s-allocated object of size %u, type %s, composite type? %lx and kind %d\n\n",
+            //         x,
+            //         xalloc ? xalloc->name : "no alloc found",
+            //         xsz,
+            //         xtype ? UNIQTYPE_NAME(xtype) : "no type found",
+            //         xtype ? UNIQTYPE_IS_COMPOSITE_TYPE(xtype) : 0U,
+            //         xtype ? UNIQTYPE_KIND(xtype) : 0
+            //       );
             if (metavector_fn && xtype) {
               void* ret = NULL;
               ret = metavector_fn(x, xtype, xarg);
-              // if (ret) return ret /* What to do with ret? */
+              // if (ret) { /* Found global pointer to malloc arena */
+                
+              // }
             }
           }
       }
@@ -456,14 +458,14 @@ struct big_allocation *malloc_arena = NULL;
   * inside these chunks and mark them as 'reached' as well. At the end of the mark phase,
   * every marked object in the heap is black and every unmarked object is white.
   */ 
-void mark_stack_and_register_roots() {
+void mark_from_stack_and_register_roots() {
   debug_printf("\n");
   debug_printf("Marking allocs from stack frames and registers ... \n");
   int ret = liballocs_unwind_stack(mark_cb, __uniqtype_follow_ptr_heap);
   debug_printf("\n");
 }
 
-void mark_static_allocs() {
+void mark_from_static_allocs() {
   debug_printf("\n");
   debug_printf("Marking static allocs ... \n");
   scan_segments_of_executable(metavector_follow_ptr_to_heap, NULL);
@@ -475,13 +477,13 @@ void mark_static_allocs() {
 void *sweep_garbage(struct chunk_info_table *tab, void *xarg){
   // printf("Insert in sweep(): flag: %u, site: 0x%lx and bits: %u \n", tab->ins->alloc_site_flag,tab->ins->alloc_site, tab->ins->un.bits);
   if (tab->ins->un.bits & 0x1) /* If marked, unmark*/ {tab->ins->un.bits ^= 1;}
-  // else if (tab->ins->alloc_site_flag) { } /* Ignore inserts that are types*/
+  // else if (!tab->ins->alloc_site_flag) return NULL; /* Ignore chunks that come from unclassified allocation sites */
   else { /* Free the unreachable garbage */
     struct big_allocation *arena = malloc_arena;
     debug_printf("*** Deleting entry for chunk %p, from bitmap at %p\n", 
 		tab->cur_chunk);
     __liballocs_bitmap_delete(arena, tab->cur_chunk);
-    // free(tab->cur_chunk);
+    free(tab->cur_chunk);
   }
   return NULL; /* Continue collection */
 }
@@ -518,32 +520,35 @@ void sweep()
   // inspect_allocs();
 }
 
-#define mark_And_sweep() {mark_stack_and_register_roots();mark_static_allocs();sweep();}
+#define mark_And_sweep() {mark_from_stack_and_register_roots();mark_from_static_allocs();sweep();}
 
-int GC_counter = 100; /* Every 5 mallocs, we garbage collect*/
-int GCing = 0;
+#ifndef NOGC
+
+
+#ifndef HAVE_MORECORE
+#ifdef COUNTER
+int GC_counter = COUNTER; /* Every 5 mallocs, we garbage collect*/
+#endif
+#endif
 void* GC_Malloc(size_t bytes) {
 
-  // debug_printf("You're inside GC_Malloc \n");
-  // inspect_allocs();
-  // GC_counter = GC_counter - 1;
-  // if (GC_counter == 0){
-  //   GC_counter = -1;
-  //   mark_And_sweep();
-  //   // inspect_allocs();
-  //   GC_counter = 100;
-  // }
+  debug_printf("You're inside GC_Malloc \n");
+#ifndef HAVE_MORECORE 
+#ifdef COUNTER
+  GC_counter = GC_counter - 1;
+  if (GC_counter == 0){
+    GC_counter = -1;
+    mark_And_sweep();
+    // inspect_allocs();
+    GC_counter = COUNTER;
+  }
+#endif
+#endif
   
   void *rptr, *brk, *rptr2 = NULL;
-  // if (!snap_brk){
-  //   brk = sbrk(0);
-  //   printf("First snapshot: %p \n",brk);
-  //   brk_snapshot(brk);
-  // }
-  while (GCing) continue;
   rptr = malloc(bytes);
+#ifdef HAVE_MORECORE
   if (!rptr) { /* brk threshold reached */
-    GCing = 1;
     mark_And_sweep(); // GC
     rptr2 = malloc(bytes); /* try again */
 
@@ -552,10 +557,19 @@ void* GC_Malloc(size_t bytes) {
       printf("Out of space; errno code: %d\n", errno); exit(0);
     }
   }
-  GCing = 0;
+#endif
 //  inspect_allocs();
   return rptr;
 }
+#endif
+
+#ifdef NOGC
+void* GC_Malloc(size_t bytes) {
+  return malloc(bytes);
+}
+#endif
+
+void exp_collect() {mark_And_sweep();}
 
 void* GC_Calloc(size_t nmemb, size_t bytes) {
   return calloc(nmemb, bytes);
@@ -566,5 +580,5 @@ void* GC_Realloc(void* addr, size_t bytes) {
 }
 
 void GC_Free(void* addr){
-  return free(addr);
+  return;
 }
