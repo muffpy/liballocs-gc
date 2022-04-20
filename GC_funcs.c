@@ -188,7 +188,7 @@ void *scan_all_allocated_chunks(struct arena_bitmap_info* info,
             .bitmap_info = info
           };
 
-          view_chunk_uniqtype_metadata(&tab, fn_arg);
+          // view_chunk_uniqtype_metadata(&tab, fn_arg);
 
           if (chunk_fn) {
             ret = chunk_fn(&tab, fn_arg);
@@ -476,8 +476,12 @@ void mark_from_static_allocs() {
 */
 void *sweep_garbage(struct chunk_info_table *tab, void *xarg){
   // printf("Insert in sweep(): flag: %u, site: 0x%lx and bits: %u \n", tab->ins->alloc_site_flag,tab->ins->alloc_site, tab->ins->un.bits);
+  // debug_printf("Flag is %d\n", tab->ins->alloc_site_flag);
   if (tab->ins->un.bits & 0x1) /* If marked, unmark*/ {tab->ins->un.bits ^= 1;}
-  // else if (!tab->ins->alloc_site_flag) return NULL; /* Ignore chunks that come from unclassified allocation sites */
+  // else if (!tab->ins->alloc_site_flag) {
+  //   debug_printf("Flag is %d\n", tab->ins->alloc_site_flag);
+  //   return NULL; /* Ignore chunks that come from unclassified allocation sites */
+  // }
   else { /* Free the unreachable garbage */
     struct big_allocation *arena = malloc_arena;
     debug_printf("*** Deleting entry for chunk %p, from bitmap at %p\n", 
@@ -522,8 +526,10 @@ void sweep()
 
 #define mark_And_sweep() {mark_from_stack_and_register_roots();mark_from_static_allocs();sweep();}
 
-#ifndef NOGC
 
+/* ------------------------------- GC_Malloc ----------------------------- */
+
+#ifndef NOGC
 
 #ifndef HAVE_MORECORE
 #ifdef COUNTER
@@ -539,7 +545,6 @@ void* GC_Malloc(size_t bytes) {
   if (GC_counter == 0){
     GC_counter = -1;
     mark_And_sweep();
-    // inspect_allocs();
     GC_counter = COUNTER;
   }
 #endif
@@ -558,9 +563,9 @@ void* GC_Malloc(size_t bytes) {
     }
   }
 #endif
-//  inspect_allocs();
   return rptr;
 }
+
 #endif
 
 #ifdef NOGC
@@ -570,6 +575,10 @@ void* GC_Malloc(size_t bytes) {
 #endif
 
 void exp_collect() {mark_And_sweep();}
+
+
+
+/* ---------------------- GC_Realloc, GC_Calloc and GC_Free ------------------------- */
 
 void* GC_Calloc(size_t nmemb, size_t bytes) {
   return calloc(nmemb, bytes);
