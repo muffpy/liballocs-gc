@@ -17,6 +17,7 @@
             do { if (DEBUG_TEST) fprintf(stdout, fmt, ##__VA_ARGS__); } while (0)
 
 /* ------------------ Operations on malloc'd chunks and uniqtypes ------------------*/
+#define chunk2memfromdlmalloc(p) ((void*)((char*)(p) + (sizeof(size_t) << 1)))
 
 #define ok_address(M, a) (((char*)(a) - (sizeof(size_t) << 1)) >= (M).least_addr) /* Check address not lower than least address obtained from MORECORE */
 /* HACK: archdep */
@@ -75,6 +76,10 @@ int __uniqtype_follow_ptr_heap(void **p_obj, struct uniqtype **p_t,
         debug_printf("flag: %u, site: %lx and bits: %u \n", cur_insert->alloc_site_flag,cur_insert->alloc_site,cur_insert->un.bits);
         
         mark_chunk(cur_insert);
+
+        /* check inside chunks */
+
+        uniqtype_bfs(*p_t, chunk2memfromdlmalloc(*p_obj), 0, __uniqtype_follow_ptr_heap);
         
         return 1; /* Success marking */
       }
@@ -150,7 +155,7 @@ void *scan_all_allocated_chunks(struct arena_bitmap_info* info,
     void* (*chunk_fn)(struct chunk_info_table *, void**), void **fn_arg) {
   // pretend we're currently on 'one before the initial search start pos'
   unsigned long cur_bit_idx = -1;
-  void *prev_usrchunk, *cur_userchunk; 
+  void *prev_usrchunk, *cur_userchunk = NULL; 
   void *ret = NULL; /* init chunk_fn return value */
   /* Iterate forward over bits */
   while ((unsigned long)-1 != (cur_bit_idx = bitmap_find_first_set1_geq_l(
@@ -484,8 +489,11 @@ void *sweep_garbage(struct chunk_info_table *tab, void *xarg){
   // }
   else { /* Free the unreachable garbage */
     struct big_allocation *arena = malloc_arena;
-    debug_printf("*** Deleting entry for chunk %p, from bitmap at %p\n", 
-		tab->cur_chunk);
+    debug_printf("*** Deleting entry for chunk %p, aligned end at %p\n\n", 
+		tab->cur_chunk, (void*)((uintptr_t) tab->cur_chunk + MALLOC_ALIGN));
+    if (tab->prev_chunk && (void*)((uintptr_t) tab->prev_chunk + MALLOC_ALIGN > tab->cur_chunk)) {
+      debug_printf("BINGO\n");
+    }
     __liballocs_bitmap_delete(arena, tab->cur_chunk);
     free(tab->cur_chunk);
   }
