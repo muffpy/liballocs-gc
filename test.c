@@ -14,21 +14,27 @@ void lose_malloc(){
   printf("Losing pointers: l1: %p, l2: %p, l3: %p, l4: %p, l5: %p\n",
         l1,l2,l3,l4,l5);
 }
+struct simplemaze {
+  char* name;
+};
 struct maze {
   int num;
   double num2;
   char *name;
-  struct maze *inner;
+  struct simplemaze *inner;
 };
 struct maze *nested_mallocs() {
   struct maze *l1;
   struct maze *l2;
   l1 = malloc(sizeof(struct maze));
-  l2 = malloc(sizeof(struct maze));
+  l2 = malloc(sizeof(struct simplemaze));
   l1->num = malloc(20);
   l1->num2 = 14;
+  l1->name = "outer";
   l1->inner = l2;
   l2->name = "inner";
+  printf("Live maze: l1: %p, l2: %p and l1->num: %p\n",
+        l1,l2,l1->num);
   return l1;
 }
 //globs
@@ -41,7 +47,7 @@ int main(int argc, char **argv)
   glob = 9 * 20;
   GLOBAL_VAR_malloc = malloc(sizeof(double));
   // lose_malloc();
-  struct maze *l3 = nested_mallocs();
+  struct maze *mz = nested_mallocs();
   // another_one = l1;
   void *p = malloc(5 * sizeof(int));
   void *chmalloc = malloc(50 * sizeof(char));
@@ -50,7 +56,7 @@ int main(int argc, char **argv)
 
   lose_malloc();
 
-  for (int i = 0; i < 10000; ++i){
+  for (int i = 0; i < 100; ++i){
     void *p = malloc(sizeof(int));
     void *q = malloc(sizeof(double));
     void *m = malloc(sizeof(char));
@@ -58,7 +64,12 @@ int main(int argc, char **argv)
   exp_collect(); /* Call collector */
   
   printf("Live pointers: p: %p, chmalloc: %p, maze l3: %p, global_malloc: %p \n",
-        p,chmalloc,l3,GLOBAL_VAR_malloc);
+        p,chmalloc,mz,GLOBAL_VAR_malloc);
+  printf("Maze check\n");
+  printf("maze l1: l1->name: %s, l1->num: %p, l1->num2: %f, l1->inner: %p \n",
+        mz->name, mz->num, mz->num2, mz->inner);
+  printf("maze l2: l2->name: %s",
+        mz->inner->name);
   inspect_allocs();
   printf("SUCCESS \n");
   return 0;
