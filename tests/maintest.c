@@ -39,12 +39,6 @@ int glob;
 
 int main(int argc, char **argv)
 {
-  // inspect_allocs()
-  // glob = 9 * 20;
-  // GLOBAL_VAR_malloc = malloc(sizeof(double));
-  // // lose_malloc();
-  // struct maze *l3 = nested_mallocs();
-  // another_one = l1;
   void *p = malloc(5 * sizeof(int));
   // void *chmalloc = malloc(10 * sizeof(char));
   void *ptrs[] = { main, p, &p, NULL };
@@ -57,42 +51,15 @@ int main(int argc, char **argv)
       UNIQTYPE_NAME(alloc_get_type(*x))
     );
   }
-  
 
   free(p);
 
-  // // /* 
-  // // * Mark phase depth first search - 
-  // // * iterate over root objects that contain pointers to heap storage which has been allocated to the user by malloc
-  // // * and mark the chunks pointed to as 'reached'. Follow the child pointers
-  // // * inside these chunks and mark them as 'reached' as well. At the end of the mark phase,
-  // // * every marked object in the heap is black and every unmarked object is white.
-  // // */ 
-  /*
-  * Collect white objects in the heap during sweep
-  */
-  // mark_And_sweep();
-
-  // // scan_segments_of_executable(NULL, NULL);
-
-
   lose_malloc();
-  
-  // mark_And_sweep();
-
-  // inspect_allocs();
-
 
   for (int i = 0; i < 10000; ++i){
     void *p = malloc(sizeof(char));
   }
-
-  // inspect_allocs();
-
-
-  // mark_And_sweep();
-
-  // inspect_allocs();
+  exp_collect();
 
   return 0;
 }
