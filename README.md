@@ -1,9 +1,87 @@
 # liballocs-gc
-
-To run the code in the liballocs Debian container:
+This is a stop-the-world Mark\&Sweep garbage collection service written in C for single-threaded 
+workflows, built with liballocs and uses Doug Lea's dlmalloc as a back-end allocator. 
+The C interface to the collector consists of four routines that should be called by the user or can be 
+supplied as command-line flags at compile-time.
 
 ```
-allocscc -I/usr/local/src/liballocs/include -I/usr/local/src/liballocs/contrib/liballocstool/include -I/usr/local/src/liballocs/contrib/libsystrap/contrib/librunt/include -o test test.c
-
-LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
+#define malloc(n) GC_Malloc(n)
+#define free(n) GC_Free(n)
+#define realloc(m,n) GC_Realloc(m,n)
+#define calloc(m,n) GC_Calloc(m,n)
 ```
+
+`GC_funcs.c`: 
+`GC_funcs.h`:
+
+
+## Building liballocs-gc
+liballocs needs to be [installed](https://github.com/muffpy/liballocs) first (obviously!). Make sure to use the fork from muffpy's account and not the original. Currently available for x86-64 GNU/Linux systems and tested builds for Debian Buster, Debian Stretch and Ubuntu 18.04, liballocs offers useful run-time metadata such as the program allocation structure and type information at a cheap cost. C files must first be compiled with allocscc 
+
+```
+$ allocscc ${INCLUDE_DIRS} -o foo foo.c ${LD_FLAGS}
+```
+
+and be run with liballocs preloaded
+
+```
+LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./foo
+```
+
+liballocs-gc has only been tested in Debian Buster and Debian Stretch. The collector can be built with a classic Makefile. The procedure could look something like:
+```
+$ git clone https://github.com/muffpy/liballocs-gc.git
+$ cd liballocs-gc
+$ make
+```
+Users interested in liballocs-gc can then add the static library generated as an LD_FLAG while compiling with allocscc as follows:
+
+```
+$ allocscc ${INCLUDE_DIRS} -o foo foo.c .../liballocs-gc/libgc.a ${OTHER_LD_FLAGS}
+```
+
+Running the executable is the same as shown above.
+
+## Simple example
+You would need to include "GC_funcs.h" in programs that require garbage collection. All `malloc` calls should be replaced with `GC_Malloc` easily defined using a macro. Note that `GC_Free` is a nop.
+
+The following program is a simple example of using liballocs-gc available in test.c.
+
+```
+#include <stdio.h>
+#include "GC_funcs.h"
+
+#define malloc(n) GC_Malloc(n)
+
+/* -------------------------------- Test program ----------------------------- */
+
+int main(int argc, char **argv)
+{
+  int* reachable = (int*) malloc(sizeof(void*))
+
+  for (int i = 0; i < 200000; ++i){
+    void *p = malloc(sizeof(int));
+    void *q = malloc(sizeof(double));
+    void *m = malloc(sizeof(char));
+  }
+  exp_collect(); /* Call collector */
+  
+  inspect_allocs(); /* Print out allocated object addresses and uniqtypes. Should only show the 'reachable' object */
+  
+  printf("SUCCESS \n");
+
+  return 0;
+}
+
+```
+
+## Useful macros and functions in `GC_funcs.c`
+
+`#NOGC`
+`#DEBUG_TEST`
+`#COUNTER`
+`#HAVE_MORECORE`
+`#STATS`
+`exp_collect()`
+`timed_collect()`
+
