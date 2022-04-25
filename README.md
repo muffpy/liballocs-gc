@@ -11,8 +11,8 @@ supplied as command-line flags at compile-time.
 #define calloc(m,n) GC_Calloc(m,n)
 ```
 
-`GC_funcs.c`: 
-`GC_funcs.h`:
+`GC_funcs.c`: crux of the garbage collector. Contains the mark&sweep functions which are used when GC_Malloc deems it appropriate. 
+`dlmalloc.c`: the back-end allocator which contains the sbrk threshold implementation that adds a wrapper around sys_alloc and fails when threshold is reached.
 
 
 ## Building liballocs-gc
@@ -84,4 +84,13 @@ int main(int argc, char **argv)
 `#STATS`
 `exp_collect()`
 `timed_collect()`
+
+## Tests
+
+`plain.c`
+`glibc-simple.c`
+`binarytrees.c`
+`cycles.c`
+`fasta.c`
+`knucleotide.c`
 
