@@ -1,5 +1,5 @@
 # liballocs-gc
-This is a stop-the-world Mark\&Sweep garbage collection service written in C for single-threaded 
+This is a semi-precise stop-the-world Mark\&Sweep garbage collection service written in C for single-threaded 
 workflows, built with liballocs and uses Doug Lea's dlmalloc as a back-end allocator. 
 The C interface to the collector consists of four routines that should be called by the user or can be 
 supplied as command-line flags at compile-time.
@@ -12,6 +12,7 @@ supplied as command-line flags at compile-time.
 ```
 
 `GC_funcs.c`: crux of the garbage collector. Contains the mark&sweep functions which are used when GC_Malloc deems it appropriate. 
+
 `dlmalloc.c`: the back-end allocator which contains the sbrk threshold implementation that adds a wrapper around sys_alloc and fails when threshold is reached.
 
 
@@ -76,14 +77,16 @@ int main(int argc, char **argv)
 ```
 
 ## Useful macros and functions in `GC_funcs.c`
+Note that these macros can also be passed as a command-line flag (-D_macro_) while comiling the program file.
 
-`#NOGC`
-`#DEBUG_TEST`
-`#COUNTER`
-`#HAVE_MORECORE`
-`#STATS`
-`exp_collect()`
-`timed_collect()`
+
+`#NOGC`: can be used to disable all collection thresholds and gc in general
+`#DEBUG_TEST`: setting this to 1 enables all the debug_printf() statements in GC_funcs.c which may prove useful for debugging the gc step-by-step.
+`#COUNTER`: a collection threshold which triggers gc when counter reaches 0. Each GC_Malloc() decrements this counter by 1.
+`#HAVE_MORECORE`: a collection threshold which triggers gc when 10KB of new heap space was obtained from sbrk()
+`#STATS`: setting this to 1 counts the number of (successful) malloc() (or allocations) and free() (or deallocations of garbage)
+`exp_collect()`: can be used to explicitly force gc
+`timed_collect()`: same as exp_collect() but times the gc
 
 ## Tests
 
