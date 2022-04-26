@@ -8,7 +8,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <pthread.h>
+#include "../GC_funcs.h"
 
 typedef struct node {
    struct node *left, *right;
@@ -46,15 +46,7 @@ bottom_up_tree(int depth)
       return new_node(NULL, NULL);
 }
 
-static void
-delete_tree(node *tree)
-{
-   if (tree->left != NULL) {
-      delete_tree(tree->left);
-      delete_tree(tree->right);
-   }
-   free(tree);
-}
+/* Removed delete_tree */
 
 struct worker_args {
    long iter, check;
@@ -77,7 +69,6 @@ check_tree_of_depth(void *_args)
    for (i = 1; i <= iter; i++) {
       tmp = bottom_up_tree(depth);
       check += item_check(tmp);
-      delete_tree(tmp);
    }
 
    args->check = check;
@@ -87,9 +78,8 @@ check_tree_of_depth(void *_args)
 int
 main(int ac, char **av)
 {
-   node *stretch, *longlived;
    struct worker_args *args;
-   int n, depth, mindepth, maxdepth, stretchdepth;
+   int n, depth, mindepth, maxdepth;
 
    n = ac > 1 ? atoi(av[1]) : 10;
    if (n < 1) {
@@ -99,14 +89,6 @@ main(int ac, char **av)
 
    mindepth = 4;
    maxdepth = mindepth + 2 > n ? mindepth + 2 : n;
-   stretchdepth = maxdepth + 1;
-
-   stretch = bottom_up_tree(stretchdepth);
-   printf("stretch tree of depth %u\t check: %li\n", stretchdepth,
-       item_check(stretch));
-   delete_tree(stretch);
-
-   longlived = bottom_up_tree(maxdepth);
 
    for (depth = mindepth; depth <= maxdepth; depth += 2) {
 
@@ -118,14 +100,14 @@ main(int ac, char **av)
       check_tree_of_depth(args);
       printf("%ld\t trees of depth %d\t check: %ld\n",
           args->iter, args->depth, args->check);
-      free(args);
+      /* Not in the original benchmark game code */
+      exp_collect();
+      printf("Finished collection for depth: %d\n", args->depth);
    }
 
-   printf("long lived tree of depth %d\t check: %ld\n", maxdepth,
-       item_check(longlived));
-
-   /* not in original C version: */
-   delete_tree(longlived);
+   /* Not in the original benchmark game code */
+   inspect_allocs();
+   printf("Success!");
 
    return 0;
 }

@@ -1,0 +1,331 @@
+#!/usr/bin/env python
+
+# Credit:   Oliver Gerlich
+# Link: https://github.com/oliver/shell-timeit
+
+#
+# Runs a command several times, measures execution time, and prints combined results of all runs
+#
+
+
+
+import sys
+import os
+import getopt
+import subprocess
+import time
+import datetime
+import timeit
+import json
+import resource
+import re
+
+
+ELLIPSIS_CHAR = u"\u2026"
+
+
+def appendResults(destPath, message, startTime, endTime, command, resultMap):
+    data = {
+        "start":datetime.datetime.utcfromtimestamp(startTime).isoformat() + "Z",
+        "end":datetime.datetime.utcfromtimestamp(endTime).isoformat() + "Z",
+        "command":command,
+        "results":{}
+            }
+
+    for key in resultMap.keys():
+        data["results"][key] = resultMap[key]
+
+    if message is not None:
+        data["message"] = message
+
+    fp = open(destPath, "a")
+    json.dump(data, fp)
+    fp.write("\n")
+    fp.close()
+
+
+def parseIsoDatetime(s):
+     return datetime.datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%fZ" )
+
+def readResultFile(srcPath):
+    fp = open(srcPath)
+    rawData = fp.read()
+    fp.close()
+
+    results = []
+    decoder = json.JSONDecoder()
+    while rawData:
+        lineData, length = decoder.raw_decode(rawData)
+        lineData["start"] = parseIsoDatetime(lineData["start"])
+        lineData["end"] = parseIsoDatetime(lineData["end"])
+        results.append(lineData)
+        rawData = rawData[length:].lstrip()
+    return results
+
+
+def createDiagram(destPath, allResults, measurementNameStr):
+    import matplotlib.pyplot as plt
+
+    # constants for possible units:
+    UNIT_COUNT = 1
+    UNIT_SECONDS = 2
+    UNIT_KILOBYTES = 3
+
+    unitNames = {
+        UNIT_COUNT: "Count",
+        UNIT_SECONDS: "Seconds",
+        UNIT_KILOBYTES: "Kilobytes",
+    }
+
+    # TODO: add all values from resource package:
+    knownMeasurementNames = {
+        "wallclock": ("Wallclock Time", UNIT_SECONDS),
+        "ru_utime": ("User Mode Time", UNIT_SECONDS),
+        "ru_stime": ("System Mode Time", UNIT_SECONDS),
+        "ru_maxrss": ("Maximum resident set size", UNIT_KILOBYTES),
+        "ru_minflt": ("Page faults not requiring I/O", UNIT_COUNT),
+    }
+
+    # determine columns and bars:
+    # (a column may contain multiple bars, which will be stacked)
+    columns = []
+    numBars = 0
+    yAxes = []
+    for columnString in measurementNameStr.split(","):
+        columns.append({
+            "bars": []
+        })
+        column = columns[-1]
+
+        for measurementName in columnString.split("+"):
+            if measurementName in knownMeasurementNames:
+                (measurementDesc, unit) = knownMeasurementNames[measurementName]
+            else:
+                (measurementDesc, unit) = (measurementName, UNIT_COUNT) # fallback
+
+            yAxis = next(iter(filter(lambda a: a["unit"] == unit, yAxes)), None)
+            if yAxis is None:
+                yAxes.append({
+                    "unit": unit,
+                })
+
+            column["bars"].append({
+                "measurementName": measurementName,
+                "measurementDesc": measurementDesc,
+                "unit": unit,
+                "barHeights": [],
+                "barBottomOffsets": [],
+                "valueRanges": [],
+                "pointsX": [],
+                "pointsY": [],
+            })
+            numBars+=1
+
+    if len(yAxes) > 2:
+        raise ValueError("cannot display values with more than two different units")
+
+    numColumns = len(columns)
+
+    widthOfAllColumns = 0.8
+    columnWidth = widthOfAllColumns / numColumns
+    xBaseOffset = (0 - (widthOfAllColumns / 2.)) + (columnWidth / 2.)
+
+    # calculate X offset of each column:
+    i = 0
+    for column in columns:
+        column["xOffset"] = xBaseOffset + (i * columnWidth)
+        i+=1
+
+    # set unique color for each bar:
+    colormapFunction = plt.cm.get_cmap("hsv", numBars + 1)
+    i = 0
+    for column in columns:
+        for bar in column["bars"]:
+            bar["color"] = colormapFunction(i)
+            i+=1
+
+    # get diagram values
+    measurementDesc = measurementNameStr
+
+    xLabels = []
+    xLabels.append("")
+    lastDate = None
+    i = 0
+    for r in allResults:
+        if lastDate is None or lastDate != r["start"].date():
+            label = r["start"].strftime("%Y-%d-%m %H:%M:%S")
+        else:
+            label = r["start"].strftime("%H:%M:%S")
+        lastDate = r["start"].date()
+
+        if "message" in r:
+            label = r["message"] + "\n" + label
+        else:
+            cmd = " ".join(r["command"])
+            if len(cmd) > 50:
+                cmd = cmd[:30] + ELLIPSIS_CHAR + cmd[-17:]
+            label = cmd + "\n" + label
+
+        xLabels.append(label)
+
+        for column in columns:
+            for bar in column["bars"]:
+                measurementName = bar["measurementName"]
+                if not(measurementName in r["results"]):
+                    raise ValueError("measurement \"%s\" is not available in result data. Available are: %s" % (
+                        measurementName, " ".join(sorted(r["results"].keys()))))
+
+                # for stacked bars, add the values of all lower bars on top:
+                yOffset = 0
+                for lowerBar in column["bars"]:
+                    if lowerBar == bar:
+                        break
+                    yOffset += lowerBar["barHeights"][i]
+                bar["barBottomOffsets"].append(yOffset)
+
+                valueMin = min(r["results"][measurementName])
+                valueMax = max(r["results"][measurementName])
+                bar["barHeights"].append(valueMin)
+                bar["valueRanges"].append(valueMax - valueMin)
+
+                for t in r["results"][measurementName]:
+                    bar["pointsX"].append(i + column["xOffset"])
+                    bar["pointsY"].append(t + yOffset)
+
+        i+=1
+
+    # plot diagram:
+    fig, ax1 = plt.subplots()
+    yAxes[0]["axisObj"] = ax1
+    if len(yAxes) > 1:
+        yAxes[1]["axisObj"] = ax1.twinx() # add a second axis
+
+    for axis in yAxes:
+        label = unitNames[axis["unit"]]
+        axis["axisObj"].set_ylabel(label)
+
+    numResults = len(allResults)
+    barWidths = [columnWidth] * numResults
+
+    for column in columns:
+        for bar in column["bars"]:
+            xOffset = column["xOffset"]
+            xValues = [v + xOffset for v in range(0, numResults)]
+            yErrors = ( [0]*numResults, bar["valueRanges"] )
+
+            axis = next(iter(filter(lambda a: a["unit"] == bar["unit"], yAxes)))
+
+            axis["axisObj"].bar(xValues, bar["barHeights"], bottom=bar["barBottomOffsets"], width=barWidths, align="center", color=bar["color"],
+                yerr=yErrors, ecolor="black", label=bar["measurementDesc"])
+
+            axis["axisObj"].plot(bar["pointsX"], bar["pointsY"], "o", color=bar["color"])
+
+    ax1.xaxis.set_ticks(range(-1, numResults+1))
+    ax1.xaxis.set_ticklabels(xLabels, rotation=90, fontsize=8)
+    ax1.set_xlim(-0.5, numResults - 0.5)
+
+    ax1.legend(loc="upper left", fontsize=10, framealpha=0.5)
+    if len(yAxes) > 1:
+        yAxes[1]["axisObj"].legend(loc="upper right", fontsize=10, framealpha=0.5)
+
+    try:
+        plt.tight_layout()
+    except ValueError:
+        # workaround for https://github.com/matplotlib/matplotlib/issues/5456 which occurs with very long labels:
+        print "Note: could not apply tight layout; using default margins instead."
+        ax1.margins(0.1, 0.1)
+    plt.savefig(destPath)
+
+
+def usage():
+    print "Usage: %s [-r <num runs>] [-s|--shell] [-f|--file=<results.json>] [-m|--message <free-text message>] [-o|--output=[measurement list=]<output.png/.svg>] <command line>" % sys.argv[0]
+
+if __name__ == "__main__":
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hr:sf:m:o:", ["help", "runs=", "shell", "file=", "message=", "output="])
+    except getopt.GetoptError as err:
+        print str(err)
+        usage()
+        sys.exit(2)
+
+    numRuns = 3
+    runInShell = False
+    resultFile = None
+    message = None
+    outputFiles = []
+    for o, a in opts:
+        if o in ("-h", "--help"):
+            usage()
+            sys.exit()
+        elif o in ("-r", "--runs"):
+            numRuns = int(a)
+        elif o in ("-s", "--shell"):
+            runInShell = True
+        elif o in ("-f", "--file"):
+            resultFile = a
+        elif o in ("-m", "--message"):
+            message = a
+        elif o in ("-o", "--output"):
+            outputFiles.append(a)
+        else:
+            assert False, "internal error (unhandled option)"
+
+    if numRuns < 1:
+        print "error: -r parameter must be >= 1"
+        sys.exit(2)
+
+    command = args
+
+    if not(command) and not(outputFiles):
+        print "error: must specify at least a command or an output file"
+        usage()
+        sys.exit(2)
+
+    if command:
+        if resultFile is not None:
+            if not(os.path.exists(resultFile)):
+                open(resultFile, "w").close()
+
+        overallStartTime = time.time()
+        results = {"wallclock":[]}
+        for i in range(numRuns):
+            startUsage = resource.getrusage(resource.RUSAGE_CHILDREN)
+            startTime = timeit.default_timer()
+            try:
+                subprocess.call(command, shell=runInShell)
+            except OSError, ex:
+                print "Error: failed to run command: %s. Command line used: %s" % (ex, command)
+            endTime = timeit.default_timer()
+            endUsage = resource.getrusage(resource.RUSAGE_CHILDREN)
+
+            results["wallclock"].append(endTime - startTime)
+            for field in dir(endUsage):
+                if field.startswith("ru_"):
+                    startVal = getattr(startUsage, field)
+                    endVal = getattr(endUsage, field)
+                    if not(field in results):
+                        results[field] = []
+                    results[field].append(endVal - startVal)
+        overallEndTime = time.time()
+
+        wallclocks = results["wallclock"]
+        sys.stderr.write("wallclock: avg=%.3fs; range=%.3fs (%.3fs - %.3fs); runs=%d\n" % (
+            float(sum(wallclocks))/len(wallclocks), (max(wallclocks)-min(wallclocks)), min(wallclocks), max(wallclocks), len(wallclocks)))
+
+        if resultFile is not None:
+            appendResults(resultFile, message, overallStartTime, overallEndTime, command, results)
+
+    if outputFiles:
+        if resultFile is None:
+            raise NotImplementedError("cannot create diagram for single value")
+        else:
+            allResults = readResultFile(resultFile)
+
+        for pathEntry in outputFiles:
+            # output file arguments may optionally be preceded by the measurement name to plot:
+            matches = re.match(r"([\w_+,]+)=(.+)$", pathEntry)
+            if matches:
+                (measurementName, path) = matches.groups()
+                createDiagram(path, allResults, measurementName)
+            else:
+                createDiagram(pathEntry, allResults, "wallclock,ru_stime+ru_utime")
