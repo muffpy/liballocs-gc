@@ -4,7 +4,7 @@
 // #include "boehm/gc.h"
 
 extern int mallocs, collections;
-/* -------------------------------- Test program ----------------------------- */
+/* -------------------------------- Nesting structs program ----------------------------- */
 
 struct simplemaze {
   char* name;
@@ -122,39 +122,6 @@ int main(int argc, char **argv)
   //       GLOBAL_VAR_malloc->inner->name);
   inspect_allocs();
   printf("SUCCESS \n");
-
-//   struct elf {};
-//   typedef struct elf {} Elf64_Word;
-//   typedef struct elf {} Elf64_Half;
-//   typedef struct elf {} Elf64_Addr;
-//   typedef struct elf {} Elf64_Xword;
-//   typedef struct elf {} Elf64_Off;
-
-//   typedef struct {
-//         Elf64_Word      sh_name;
-//         Elf64_Word      sh_type;
-//         Elf64_Xword     sh_flags;
-//         Elf64_Addr      sh_addr;
-//         Elf64_Off       sh_offset;
-//         Elf64_Xword     sh_size;
-//         Elf64_Word      sh_link;
-//         Elf64_Word      sh_info;
-//         Elf64_Xword     sh_addralign;
-//         Elf64_Xword     sh_entsize;
-//    } Elf64_Shdr;
-
-
-//    typedef struct {
-//         Elf64_Word      p_type;
-//         Elf64_Word      p_flags;
-//         Elf64_Off       p_offset;
-//         Elf64_Addr      p_vaddr;
-//         Elf64_Addr      p_paddr;
-//         Elf64_Xword     p_filesz;
-//         Elf64_Xword     p_memsz;
-//         Elf64_Xword     p_align;
-//     } Elf64_Phdr;
-
-
+  
   return 0;
 }
