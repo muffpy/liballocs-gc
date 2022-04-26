@@ -1,5 +1,5 @@
-default: libgc.a test
-tests: cleanallocs build-subdirs-and-compile-and-run-tests
+default: libgc.a libgc2.a
+tests: compile-tests
 cleanall: cleanallocs clean
 
 LD_FLAGS += -lunwind-x86_64 -lunwind
