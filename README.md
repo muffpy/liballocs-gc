@@ -42,7 +42,6 @@ A caveat you may have noticed in the Makefile is the setting the environment wit
 include /usr/local/src/liballocs/config.mk
 export ELFTIN
 
-LIBALLOCS_ALLOC_FNS +=
 LIBALLOCS_ALLOC_FNS := GC_Malloc(Z)p GC_Calloc(zZ)p GC_Realloc(pZ)p
 export LIBALLOCS_ALLOC_FNS
 ```
@@ -86,7 +85,7 @@ The following program is a simple example of using liballocs-gc available in tes
 
 int main(int argc, char **argv)
 {
-  int* reachable = (int*) malloc(sizeof(void*))
+  int* reachable = (int*) malloc(sizeof(void*));
 
   for (int i = 0; i < 200000; ++i){
     void *p = malloc(sizeof(int));
@@ -95,8 +94,11 @@ int main(int argc, char **argv)
   }
   exp_collect(); /* Call collector */
   
-  inspect_allocs(); /* Print out allocated object addresses and uniqtypes. Should only show the 'reachable' object */
-  
+  /* Print out remaining object addresses and uniqtypes. Should show the 'reachable' object.
+      May also show some garbage.
+  */
+  inspect_allocs();
+
   printf("SUCCESS \n");
 
   return 0;
