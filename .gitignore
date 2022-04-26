@@ -26,7 +26,6 @@
 # Compiled Static libraries
 *.lai
 *.la
-*.a
 *.lib
 
 # Executables
@@ -42,3 +41,4 @@
 debug/*
 .gdb_history
 core
+Makeallocs
