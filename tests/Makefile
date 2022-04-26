@@ -13,7 +13,7 @@ INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/libsystrap/contrib/librunt/include/
 INCLUDE_DIRS += -I/${LIBALLOCS_PATH}/contrib/libsystrap/include/
 
 LD_FLAGS +=
-LD_FLAGS += /home/user/tasks/libgc2.a
+LD_FLAGS += ../libgc2.a
 
 include /usr/local/src/liballocs/config.mk
 export ELFTIN
