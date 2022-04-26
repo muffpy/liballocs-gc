@@ -75,14 +75,14 @@ bench (unsigned long size)
 
         do_benchmark (&tests[0][i]);
       }
-      // exp_collect();
-      timed_collect();
+      exp_collect();
+      // timed_collect();
       // GC_gcollect(); /*Boehm gc*/
   }
   stop = clock();
 
   printf("Timing (ms) %f\n", (((double)stop-start)/CLOCKS_PER_SEC)*1000);
-  // inspect_allocs();
+  inspect_allocs();
 }
 
 static void usage (const char *name)

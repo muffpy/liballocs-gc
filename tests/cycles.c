@@ -18,6 +18,8 @@
 
 #include <stdio.h>
 #include "../GC_funcs.h"
+// #include "boehm/gc.h"
+// #define malloc(n) GC_malloc(n)
 
 struct Link {
     struct Link* front;
@@ -39,21 +41,26 @@ int loseCycle() {
     l1->back = l6; l2->back = l1; l3->back = l2; l4->back = l3; l5->back = l4; l6->back = l5;
     
 
-    printf("Cycle:\n");
-    printf("%p <-> %p <-> %p <-> %p <-> %p <-> %p\n",l1,l2,l3,l4,l5,l6);
-    printf("\n");
+    // printf("Cycle:\n");
+    // printf("%p <-> %p <-> %p <-> %p <-> %p <-> %p\n",l1,l2,l3,l4,l5,l6);
+    // printf("\n");
 
     return 0; /* Successfully lost Links */
 }
 
 int main() {
 
+    // GC_INIT();
+
     int ret;
-    ret = loseCycle();
-
+    for (int i = 0; i < 100000; ++i) /* Lose a cycle and collect every time */
+        ret = loseCycle();
+    
     exp_collect();
+    // GC_gcollect(); /*Boehm gc*/
 
-    inspect_allocs();
+
+    // inspect_allocs();
 
     return 0;
 }
