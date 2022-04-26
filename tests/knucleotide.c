@@ -17,6 +17,8 @@
 
 #include "khash.h"
 #include "../GC_funcs.h"
+// #include "boehm/gc.h"
+// #define malloc(n) GC_malloc(n)
 
 // Define a custom hash function to use instead of khash's default hash
 // function. This custom hash function uses a simpler bit shift and XOR which
@@ -99,6 +101,10 @@ static void generate_Frequencies_For_Desired_Length_Oligonucleotides(
 		else
 			kh_value(hash_Table, k)++;
 	}
+	
+	exp_collect();
+	// timed_collect();
+	// GC_gcollect();
 
 	// Create an array of elements from hash_Table.
 	intnative_t elements_Array_Size=kh_size(hash_Table), i=0;
@@ -185,6 +191,8 @@ static void generate_Count_For_Oligonucleotide(
 
 
 int main(){
+	// GC_INIT(); /* Boehm gc */
+
 	char buffer[4096];
 
 	// Find the start of the third polynucleotide.

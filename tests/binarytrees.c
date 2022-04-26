@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "../GC_funcs.h"
+// #include "boehm/gc.h"
+// #define malloc(n) GC_malloc(n)
 
 typedef struct node {
    struct node *left, *right;
@@ -78,6 +80,8 @@ check_tree_of_depth(void *_args)
 int
 main(int ac, char **av)
 {
+   // GC_INIT(); /* Bohem gc init */
+
    struct worker_args *args;
    int n, depth, mindepth, maxdepth;
 
@@ -102,6 +106,8 @@ main(int ac, char **av)
           args->iter, args->depth, args->check);
       /* Not in the original benchmark game code */
       exp_collect();
+      // timed_collect();
+      // GC_gcollect();
       printf("Finished collection for depth: %d\n", args->depth);
    }
 
