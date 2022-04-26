@@ -4280,7 +4280,7 @@ static void* sys_alloc(mstate m, size_t nb) {
   brk_threshold = NULL; /* Set this global pointer to NULL so it doesn't get picked up during the marking phase*/
 #endif
   debug_print_string("\n");
-  // MALLOC_FAILURE_ACTION;
+  MALLOC_FAILURE_ACTION;
   return 0;
 }
 
