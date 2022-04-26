@@ -1,4 +1,4 @@
-.PHONY: defualt clean cleanall
+.PHONY: default clean cleanall
 default: simple cycles binarytrees fasta knucleotide
 run: runr runc runb runk runf
 cleanall: cleanallocs clean

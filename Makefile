@@ -1,3 +1,4 @@
+.PHONY: default cleanall
 default: libgc.a libgc2.a
 tests: compile-tests
 cleanall: cleanallocs clean
