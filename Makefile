@@ -94,23 +94,12 @@ test_file_execs := $(join $(foreach name,$(test_file_names),$(name)/), $(tests))
 # $(info $(test_file_names))
 # $(info $(test_file_execs))
 
-# Export these for Makeallocs to use
-# export test_dir
-# export LD_FLAGS
-# export DFLAGS
-# export INCLUDE_DIRS
-# Create subdir -> symbolic link Makeallocs inside subdir -> Run make on this file
-build-subdirs-and-compile-and-run-tests:
-	for d in $(test_file_names); do \
-		mkdir -p $$d; \
-		ln -sf ${mkfile_dir}/Makeallocs $$d/Makeallocs; \
-		$(MAKE) -f Makeallocs -C $$d run; \
-	done
-
 compile-tests:
 	$(MAKE) -C $(test_dir) clean && \
 	$(MAKE) --silent -C $(test_dir)
 	
+
+## Cleanup
 cleanallocs:
 	find . -name '*.allocstubs.o' -o -name '*.allocstubs.c' -o -name '*.allocstubs.i' -o -name '*.allocstubs.s' -o \
 	     -name '*.linked.o' -o -name '*.fixuplog' -o -name '*.o.fixuplog' -o \

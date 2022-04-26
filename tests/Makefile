@@ -56,14 +56,6 @@ runb: binarytrees
 timebinarytrees: binarytrees
 	./timeit -s -r 10 "LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./binarytrees 17"
 
-knucleotide.o: knucleotide.c
-	echo "Compiling $< with allocscc" && \
-	allocscc ${DFLAGS} ${INCLUDE_DIRS} -c $<
-knucleotide : knucleotide.o
-	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o knucleotide $< -lallocs
-runk: knucleotide
-	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./knucleotide 0 < nucleotideinput.txt
-
 fasta.o: fasta.c
 	echo "Compiling $< with allocscc" && \
 	allocscc ${DFLAGS} ${INCLUDE_DIRS} -c $<
@@ -72,7 +64,16 @@ fasta: fasta.o
 runf: fasta
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./fasta 25000 > nucleotideinput.txt
 
+knucleotide.o: knucleotide.c
+	echo "Compiling $< with allocscc" && \
+	allocscc ${DFLAGS} ${INCLUDE_DIRS} -c $<
+knucleotide : knucleotide.o
+	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o knucleotide $< -lallocs
+runk: knucleotide fasta
+	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./knucleotide 0 < nucleotideinput.txt
 
+
+### Cleanup
 cleanallocs:
 	find . -name '*.allocstubs.o' -o -name '*.allocstubs.c' -o -name '*.allocstubs.i' -o -name '*.allocstubs.s' -o \
 	     -name '*.linked.o' -o -name '*.fixuplog' -o -name '*.o.fixuplog' -o \
