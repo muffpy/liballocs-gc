@@ -80,20 +80,48 @@ int main(int argc, char **argv)
 Note that these macros can also be passed as a command-line flag (-D_macro_) while comiling the program file.
 
 
-`#NOGC`: can be used to disable all collection thresholds and gc in general
+`#NOGC`: can be used to disable all collection thresholds and gc in general.
+
 `#DEBUG_TEST`: setting this to 1 enables all the debug_printf() statements in GC_funcs.c which may prove useful for debugging the gc step-by-step.
+
 `#COUNTER`: a collection threshold which triggers gc when counter reaches 0. Each GC_Malloc() decrements this counter by 1.
-`#HAVE_MORECORE`: a collection threshold which triggers gc when 10KB of new heap space was obtained from sbrk()
-`#STATS`: setting this to 1 counts the number of (successful) malloc() (or allocations) and free() (or deallocations of garbage)
-`exp_collect()`: can be used to explicitly force gc
-`timed_collect()`: same as exp_collect() but times the gc
+
+`#HAVE_MORECORE`: a collection threshold which triggers gc when 10KB of new heap space was obtained from sbrk().
+
+`#STATS`: setting this to 1 counts the number of (successful) malloc() (or allocations) and free() (or deallocations of garbage).
+
+`exp_collect()`: can be used to explicitly force gc.
+
+`timed_collect()`: same as exp_collect() but times the gc.
 
 ## Tests
+Add new C files to the /tests directory and add brief decription below. Test files can be compiled either from the root directory:
 
-`plain.c`
-`glibc-simple.c`
-`binarytrees.c`
-`cycles.c`
-`fasta.c`
-`knucleotide.c`
+```
+$ make tests
+```
 
+or using the Makefile inside the tests directory (which the previous command basically) that offers more control over compilation and execution paramters:
+
+```
+$ cd tests
+$ make
+```
+
+Average runtime over 10 runs (this is paramterized) can be calculated using the shell-timeit tool (credit to Oilver Gerlich) using:
+```
+$ cd tests
+$ make time
+```
+
+`nest.c`: allocates structs with intermingled pointers and 'loses' 600000 malloc'd objects
+
+`glibc-simple.c`: glibc benchmark used to test performance of malloc() and free() by making large number of allocations of varying sizes.
+
+`binarytrees.c`: adapted BohemGC Bench test which allocates large numbers of fully binary trees and walks them top-down.
+
+`cycles.c`: allocates cyclic linked list of garbage.
+
+`fasta.c`: borrowed from Benchmark Game. Used to generate DNA sequences in the FASTA format from a small starting-point sequence or a weighted random selection. Mostly sued to generate input for knucleotide.c
+
+`knucleotide.c`: borrowed from Benchmark Game. Used to parse and decode DNA sequences. A unique allocation pattern is the repeated use of realloc's between malloc calls which stress tests the underlying bitmap implementation responsible for "reindexing" the bit entries and ensuring the correct relocation of the inserts.
