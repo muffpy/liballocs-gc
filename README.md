@@ -113,6 +113,7 @@ Average runtime over 10 runs (this is paramterized) can be calculated using the 
 $ cd tests
 $ make time
 ```
+You would need to have Python 2 installed to do that.
 
 `nest.c`: allocates structs with intermingled pointers and 'loses' 600000 malloc'd objects
 
