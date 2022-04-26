@@ -31,7 +31,7 @@ DLFLAGS += -fPIC
 DLFLAGS += -ffreestanding
 sbrkmalloc.o: dlmalloc.c
 	allocscc $(DLFLAGS) $(INCLUDE_DIRS) -DHAVE_MMAP=0 -DHAVE_MORECORE=1 -DMORECORE=_morecore -o $@ $^
-pures.o: dlmalloc_pure.c
+pures.o: ./tests/dlmalloc_pure.c
 	allocscc $(DLFLAGS) -DHAVE_MMAP=0 -DHAVE_MORECORE=1 -o $@ $^
 mmapmalloc.o: dlmalloc.c
 	gcc $(DLFLAGS) -DHAVE_MORECORE=0 -o $@ $^
@@ -41,9 +41,9 @@ mmapmalloc.o: dlmalloc.c
 # GC_funcs.o : uses sbrk threshold (same macro used as dlmalloc - HAVE_MORECORE) when deciding to garbage collect
 # GC_funcs2.o : uses an input counter when deciding to garbage collect. Each malloc() call decrements counter by 1
 GC_funcs.o: GC_funcs.c
-	gcc ${INCLUDE_DIRS} -DCOUNTER=100 -DDEBUG_TEST=1 -g -c $^
+	gcc ${INCLUDE_DIRS} -DCOUNTER=100 -DSTATS -DDEBUG_TEST=0 -g -c $^
 GC_funcs2.o : GC_funcs.c
-	gcc ${INCLUDE_DIRS} -DCOUNTER=100 -DDEBUG_TEST=1 -g -o $@ -c $^
+	gcc ${INCLUDE_DIRS} -DNOGC -DSTATS -DDEBUG_TEST=0 -g -o $@ -c $^
 
 ## Build 2 versions of libgc
 libgc.a: pures.o GC_funcs.o
@@ -72,7 +72,12 @@ test : test.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o test $< -lallocs
 run: test
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./test
-	
+
+# times
+# 17 - 51s
+# 15 - 11s
+# 10 - 1s
+
 # allocscc ${INCLUDE_DIRS} -o test test.o /home/user/tasks/libgc.a -L/usr/local/src/liballocs/lib -lallocs -lunwind-x86_64 -lunwind
 
 
@@ -90,10 +95,10 @@ test_file_execs := $(join $(foreach name,$(test_file_names),$(name)/), $(tests))
 # $(info $(test_file_execs))
 
 # Export these for Makeallocs to use
-export test_dir
-export LD_FLAGS
-export DFLAGS
-export INCLUDE_DIRS
+# export test_dir
+# export LD_FLAGS
+# export DFLAGS
+# export INCLUDE_DIRS
 # Create subdir -> symbolic link Makeallocs inside subdir -> Run make on this file
 build-subdirs-and-compile-and-run-tests:
 	for d in $(test_file_names); do \
@@ -101,6 +106,10 @@ build-subdirs-and-compile-and-run-tests:
 		ln -sf ${mkfile_dir}/Makeallocs $$d/Makeallocs; \
 		$(MAKE) -f Makeallocs -C $$d run; \
 	done
+
+compile-tests:
+	$(MAKE) -C $(test_dir) clean && \
+	$(MAKE) --silent -C $(test_dir)
 	
 cleanallocs:
 	find . -name '*.allocstubs.o' -o -name '*.allocstubs.c' -o -name '*.allocstubs.i' -o -name '*.allocstubs.s' -o \
