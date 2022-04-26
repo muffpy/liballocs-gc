@@ -138,13 +138,6 @@ $ cd tests
 $ make
 ```
 
-Average runtime over 10 runs (this is paramterized) can be calculated using the shell-timeit tool (credit to Oilver Gerlich) using:
-```
-$ cd tests
-$ make time
-```
-You would need to have Python 2 installed to do that.
-
 `nest.c`: allocates structs with intermingled pointers and 'loses' 600000 malloc'd objects
 
 `glibc-simple.c`: glibc benchmark used to test performance of malloc() and free() by making large number of allocations of varying sizes.
