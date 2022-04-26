@@ -1,7 +1,6 @@
 .PHONY: defualt clean cleanall
 default: simple cycles binarytrees fasta knucleotide
 run: runr runc runb runk runf
-time: 
 cleanall: cleanallocs clean
 
 LD_FLAGS += -lunwind-x86_64 -lunwind
@@ -34,6 +33,8 @@ simple: glibc-simple.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o simple $< -lallocs
 runr: simple
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./simple 128
+timesimple: simple
+	./timeit -s -r 10 "LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./simple 128"
 
 cycles.o: cycles.c
 	echo "Compiling $< with allocscc" && \
@@ -42,6 +43,8 @@ cycles: cycles.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o cycles $< -lallocs
 runc: cycles
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./cycles
+timecycles: cycles
+	./timeit -s -r 10 "LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./cycles"
 
 binarytrees.o: binarytrees.c
 	echo "Compiling $< with allocscc" && \
@@ -50,6 +53,8 @@ binarytrees: binarytrees.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o binarytrees $< -lallocs
 runb: binarytrees
 	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./binarytrees 17
+timebinarytrees: binarytrees
+	./timeit -s -r 10 "LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./binarytrees 17"
 
 knucleotide.o: knucleotide.c
 	echo "Compiling $< with allocscc" && \
@@ -65,7 +70,7 @@ fasta.o: fasta.c
 fasta: fasta.o
 	allocscc ${LD_FLAGS} ${INCLUDE_DIRS} -o fasta $< -lallocs
 runf: fasta
-	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./fasta 25000
+	LD_PRELOAD=/usr/local/src/liballocs/lib/liballocs_preload.so ./fasta 25000 > nucleotideinput.txt
 
 
 cleanallocs:
