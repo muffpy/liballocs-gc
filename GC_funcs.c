@@ -66,6 +66,7 @@ static void *view_chunk_uniqtype_metadata(struct chunk_info_table *tab, void **x
 {
     struct uniqtype *out_type;
     const void *site;
+    printf("Chunk located at: %p\n", tab->cur_chunk);
     liballocs_err_t err = extract_and_output_alloc_site_and_type(tab->ins, &out_type, &site);
     // if (err) printf("Extraction error! \n");
     if (!err && out_type){
@@ -165,13 +166,13 @@ int __uniqtype_follow_ptr_heap(void **p_obj, struct uniqtype **p_t, void* xarg)
     * Check if pointed to object (*p_obj) is in heap-allocated storage and set mark bit 
     * if true
     */
-   struct big_allocation *arena;
+    struct big_allocation *arena;
 
-   if (malloc_arena) arena = malloc_arena;
-  else {
-    arena = __lookup_bigalloc_from_root_by_suballocator(*p_obj,
-    &__generic_malloc_allocator, NULL);
-  }
+    if (malloc_arena) arena = malloc_arena;
+    else {
+      arena = __lookup_bigalloc_from_root_by_suballocator(*p_obj,
+      &__generic_malloc_allocator, NULL);
+    }
     if (arena && *p_obj >= arena->begin && *p_obj <= arena->end){ /* If found, find insert for p_obj/chunk returned to applciation by dlmalloc */
       assert(ok_address(_gm_,*p_obj));
       // if (!ok_address(_gm_,*p_obj)) {
@@ -604,7 +605,6 @@ void* GC_Malloc(size_t bytes) {
 #ifdef COUNTER
   GC_counter = GC_counter - 1;
   if (GC_counter == 0){
-    GC_counter = -1;
     mark_And_sweep();
     GC_counter = COUNTER;
   }
