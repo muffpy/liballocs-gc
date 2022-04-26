@@ -136,6 +136,7 @@ or using the Makefile inside the tests directory (which the previous command bas
 ```
 $ cd tests
 $ make
+$ make run
 ```
 
 `nest.c`: allocates structs with intermingled pointers and 'loses' 600000 malloc'd objects
