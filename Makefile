@@ -38,8 +38,8 @@ mmapmalloc.o: dlmalloc.c
 
 ## Build 2 versions of GC_funcs
 # DEBUG_TEST can be set if debugging printfs need to be enbaled
-# GC_funcs.o : uses sbrk threshold (same macro used as dlmalloc - HAVE_MORECORE) when deciding to garbage collect
-# GC_funcs2.o : uses an input counter when deciding to garbage collect. Each malloc() call decrements counter by 1
+# GC_funcs.o : uses an input counter to decide when to garbage collect. Each malloc() call decrements counter by 1
+# GC_funcs2.o : no automatic garbage collection. However, gc can be called by end-user using `exp_collect()`
 GC_funcs.o: GC_funcs.c
 	gcc ${INCLUDE_DIRS} -DCOUNTER=100 -DSTATS -DDEBUG_TEST=0 -g -c $^
 GC_funcs2.o : GC_funcs.c
