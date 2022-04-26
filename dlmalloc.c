@@ -1726,10 +1726,7 @@ static void* _morecore(size_t increment){
 
   debug_print_string("Inside morecore..\n");
   void* new_brk = (void*) (increment + (uintptr_t) (MORECORE_DEFAULT(0)));
-  // void* brk_threshold = (void*) ( MORECORE_THRESHOLD + (uintptr_t) (brk_snap) );
-  // fprintf(stdout, "With call size %zu, brk snap %p, brk threshold %p: new_brk will be at %p \n",
-  //   increment, brk_snap, brk_threshold, new_brk);
-  // debug_print_string("\n brk snap      : "); debug_print_long((unsigned long) brk_snap);
+  
   debug_print_string("\n new brk       : "); debug_print_long((unsigned long) new_brk);
   debug_print_string("\n brk threshold : "); debug_print_long((unsigned long) brk_threshold);
   debug_print_string("\n");
